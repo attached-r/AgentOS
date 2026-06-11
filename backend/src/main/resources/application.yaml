@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: backend
+
+
+# 启动端口
+server:
+  port: 8099
+
+
