@@ -7,7 +7,7 @@ spring:
   application:
     name: backend
   datasource:  # 配置数据库连接信息
-    url: jdbc:postgresql://localhost:5432/agentos
+    url: jdbc:postgresql://localhost:5432/postgres
     username: postgres
     password: ${POSTGRESQL_PASSWORD:123456789rj}
     driver-class-name: org.postgresql.Driver
@@ -49,3 +49,11 @@ sa-token:
   token-style: uuid
   # 是否输出操作日志
   is-log: true
+
+# springdoc 接口文档
+springdoc:
+  api-docs:
+    path: /v1/api-docs      # 接口json路径  http://localhost:8099/v1/api-docs
+  swagger-ui:
+    path: /swagger-ui.html    # 访问路径  http://localhost:8099/swagger-ui.html
+    operations-sorter: method
