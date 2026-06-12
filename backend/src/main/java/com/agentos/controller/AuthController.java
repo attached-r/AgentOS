@@ -1,28 +1,31 @@
 package com.agentos.controller;
 
-import cn.dev33.satoken.stp.StpUtil;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.agentos.common.R;
+import com.agentos.model.dto.LoginResp;
+import com.agentos.model.dto.RegisterReq;
+import com.agentos.service.UserService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/user/")
+@RequestMapping("/api/auth/")
+@RequiredArgsConstructor
 public class AuthController {
 
-    // 测试登录，浏览器访问： http://localhost:8099/user/doLogin?username=zhang&password=123456
-    @RequestMapping("doLogin")
-    public String doLogin(String username, String password) {
-        // 此处仅作模拟示例，真实项目需要从数据库中查询数据进行比对
-        if("zhang".equals(username) && "123456".equals(password)) {
-            StpUtil.login(10001);
-            return "登录成功";
-        }
-        return "登录失败";
+    private final UserService userService;
+
+    @PostMapping("login")
+    public R<LoginResp> login(String username, String password) {
+        return R.ok(userService.login(username, password));
     }
 
-    // 查询登录状态，浏览器访问： http://localhost:8099/user/isLogin
-    @RequestMapping("isLogin")
-    public String isLogin() {
-        return "当前会话是否登录：" + StpUtil.isLogin();
+    @PostMapping("register")
+    public R<LoginResp> register(@RequestBody RegisterReq req) {
+        return R.ok(userService.register(req));
     }
 
+    @PostMapping("refresh")
+    public R<LoginResp> refresh() {
+        return R.ok(userService.refreshToken());
+    }
 }
