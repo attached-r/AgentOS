@@ -1,5 +1,6 @@
 package com.agentos.controller;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.agentos.common.R;
 import com.agentos.model.dto.LoginResp;
 import com.agentos.model.dto.RegisterReq;
@@ -9,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth/")
-@RequiredArgsConstructor
+@RequiredArgsConstructor  // 自动注入
 public class AuthController {
 
     private final UserService userService;
@@ -27,5 +28,11 @@ public class AuthController {
     @PostMapping("refresh")
     public R<LoginResp> refresh() {
         return R.ok(userService.refreshToken());
+    }
+
+    @PostMapping("logout")
+    public R<Void> logout() {
+        StpUtil.logout();
+        return R.ok(null);
     }
 }
