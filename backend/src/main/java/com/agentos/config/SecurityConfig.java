@@ -11,7 +11,7 @@ public class SecurityConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new SaInterceptor(handle -> StpUtil.checkLogin()))
+        registry.addInterceptor(new SaInterceptor(handle -> StpUtil.checkLogin()))  // 指定拦截器采取sotoken拦截
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/api/auth/**",
