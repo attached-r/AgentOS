@@ -57,3 +57,7 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html    # 访问路径  http://localhost:8099/swagger-ui.html
     operations-sorter: method
+
+# Python AI Runtime 配置
+runtime:
+  base-url: http://localhost:8001
