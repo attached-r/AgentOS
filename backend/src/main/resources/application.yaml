@@ -60,4 +60,4 @@ springdoc:
 
 # Python AI Runtime 配置
 runtime:
-  base-url: http://localhost:8001
+  base-url: http://localhost:8000
