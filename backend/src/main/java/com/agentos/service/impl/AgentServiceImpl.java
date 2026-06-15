@@ -1,6 +1,8 @@
 package com.agentos.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.agentos.client.AgentRuntimeClient;
+import com.agentos.client.AgentRuntimeClient.SyncAgentRequest;
 import com.agentos.common.BusinessException;
 import com.agentos.mapper.AgentMapper;
 import com.agentos.model.entity.Agent;
@@ -8,13 +10,26 @@ import com.agentos.service.AgentService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AgentServiceImpl implements AgentService {
 
     private final AgentMapper agentMapper;
+    private final AgentRuntimeClient agentRuntimeClient;
+
+    @Override
+    public List<Agent> list() {
+        return agentMapper.selectList(null);
+    }
 
     @Override
     public Page<Agent> page(int page, int size) {
@@ -80,5 +95,40 @@ public class AgentServiceImpl implements AgentService {
             throw new BusinessException("无权操作该 Agent");
         }
         agentMapper.deleteById(id);
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void syncAgentsToRuntime() {
+        Exception lastException = null;
+        for (int i = 0; i < 3; i++) {
+            try {
+                List<Agent> agents = agentMapper.selectList(null);
+                List<SyncAgentRequest> syncList = agents.stream().map(a -> {
+                    SyncAgentRequest r = new SyncAgentRequest();
+                    r.setId(a.getId());
+                    r.setName(a.getName());
+                    r.setDescription(a.getDescription());
+                    r.setSystemPrompt(a.getSystemPrompt());
+                    r.setModelProvider(a.getModelProvider());
+                    r.setModelName(a.getModelName());
+                    r.setTemperature(a.getTemperature());
+                    r.setMaxTokens(a.getMaxTokens());
+                    return r;
+                }).collect(Collectors.toList());
+                agentRuntimeClient.syncAgents(syncList);
+                log.info("syncAgentsToRuntime success, count={}", syncList.size());
+                return;
+            } catch (Exception e) {
+                lastException = e;
+                log.warn("syncAgentsToRuntime attempt {} failed: {}", i + 1, e.getMessage());
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        log.warn("syncAgentsToRuntime failed after 3 retries (non-blocking): {}", lastException != null ? lastException.getMessage() : "unknown");
     }
 }

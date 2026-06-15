@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -34,6 +33,30 @@ public class AgentRuntimeClient {
         HttpEntity<InvokeRequest> entity = new HttpEntity<>(request, headers);
 
         return restTemplate.postForObject(url, entity, InvokeResponse.class);
+    }
+
+    public void syncAgents(List<SyncAgentRequest> agents) {
+        String url = baseUrl + "/runtime/agents/sync";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<List<SyncAgentRequest>> entity = new HttpEntity<>(agents, headers);
+        restTemplate.postForObject(url, entity, String.class);
+    }
+
+    @Data
+    public static class SyncAgentRequest {
+        private Long id;
+        private String name;
+        private String description;
+        @JsonProperty("system_prompt")
+        private String systemPrompt;
+        @JsonProperty("model_provider")
+        private String modelProvider;
+        @JsonProperty("model_name")
+        private String modelName;
+        private Double temperature;
+        @JsonProperty("max_tokens")
+        private Integer maxTokens;
     }
 
     @Data
