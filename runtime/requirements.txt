@@ -1,3 +1,11 @@
-fastapi>= 0.137.0
+# AgentOS Runtime 依赖
+# === FastAPI 服务 ===
+fastapi>=0.137.0
 uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.0
+
+# === LLM 调用 ===
 openai>=1.12.0
+
+# === 数据校验（FastAPI 自带 pydantic，显式声明版本） ===
+pydantic>=2.5.0

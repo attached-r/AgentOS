@@ -15,12 +15,19 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class AgentRuntimeClient {
-
+    // http 客户端 连接runtime py后端
     private final RestTemplate restTemplate;
 
     @Value("${runtime.base-url}")
     private String baseUrl;
-
+    /**
+     * 调用运行时
+     *
+     * @param agentId          agent id
+     * @param conversationId   conversation id
+     * @param messages         messages
+     * @return invoke response
+     */
     public InvokeResponse invoke(Long agentId, Long conversationId, List<MessagePayload> messages) {
         String url = baseUrl + "/runtime/agents/" + agentId + "/invoke";
 
@@ -32,9 +39,17 @@ public class AgentRuntimeClient {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<InvokeRequest> entity = new HttpEntity<>(request, headers);
 
-        return restTemplate.postForObject(url, entity, InvokeResponse.class);
+        InvokeResponse response = restTemplate.postForObject(url, entity, InvokeResponse.class);
+        if (response == null) {
+            throw new RuntimeException("AI Runtime 返回为空");
+        }
+        return response;
     }
-
+    /**
+     * 同步agents
+     *
+     * @param agents agents
+     */
     public void syncAgents(List<SyncAgentRequest> agents) {
         String url = baseUrl + "/runtime/agents/sync";
         HttpHeaders headers = new HttpHeaders();
@@ -43,6 +58,7 @@ public class AgentRuntimeClient {
         restTemplate.postForObject(url, entity, String.class);
     }
 
+    // 异步创建agent请求
     @Data
     public static class SyncAgentRequest {
         private Long id;
@@ -58,13 +74,13 @@ public class AgentRuntimeClient {
         @JsonProperty("max_tokens")
         private Integer maxTokens;
     }
-
+    // 请求
     @Data
     public static class InvokeRequest {
         private Long conversationId;
         private List<MessagePayload> messages;
     }
-
+    // 消息载荷
     @Data
     public static class MessagePayload {
         private String role;
@@ -77,16 +93,16 @@ public class AgentRuntimeClient {
             this.content = content;
         }
     }
-
+    // 响应
     @Data
     public static class InvokeResponse {
         private String content;
         private Usage usage;
     }
-
+    // 使用情况
     @Data
     public static class Usage {
-        @JsonProperty("prompt_tokens")
+        @JsonProperty("prompt_tokens") // Json 映射
         private Integer promptTokens;
 
         @JsonProperty("completion_tokens")

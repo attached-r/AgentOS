@@ -1,0 +1,31 @@
+ runtime/
+  ├── main.py                     # FastAPI 入口，注册路由/中间件/异常处理
+  ├── config.py                   # 配置管理（从环境变量加载）
+  ├── .env.example                # 环境变量模板
+  ├── requirements.txt            # 依赖锁定
+  │
+  ├── core/                       # [基础组件层] 不依赖业务模块
+  │   ├── __init__.py
+  │   ├── message.py              # Message Pydantic 模型 + wire format 转换
+  │   ├── llm.py                  # LLMClient：多供应商 LLM 调用抽象（含 PROVIDER_CONFIG 注册表）
+  │   └── agent.py                # BaseAgent 抽象基类（历史管理 + 消息构建骨架）
+  │
+  ├── agents/                     # [Agent 实现层] 依赖 core/
+  │   ├── __init__.py
+  │   ├── registry.py             # AgentConfig 模型 + AgentRegistry 注册表（纯状态，无路由）
+  │   └── simple_agent.py         # SimpleAgent：V1 默认实现（user msg → LLM → response）
+  │
+  ├── api/                        # [路由层] 依赖 agents/ 和 core/
+  │   ├── __init__.py
+  │   ├── health.py               # GET /health
+  │   ├── registry_routes.py      # GET /runtime/agents, POST /runtime/agents/sync
+  │   └── invoke_routes.py        # POST /runtime/agents/{id}/invoke
+  │
+  ├── middlewares/                 # [中间件]
+  │   └── logging.py              # RequestLogMiddleware：trace_id + 耗时日志
+  │
+  └── errors/                     # [错误处理]
+      └── handler.py              # 统一 JSON 错误响应（404/502/500 + error_code + trace_id）
+
+
+启动  fastapi dev main.py
