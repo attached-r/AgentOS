@@ -8,10 +8,12 @@ import com.agentos.mapper.ConversationMapper;
 import com.agentos.mapper.MessageMapper;
 import com.agentos.model.dto.CreateConversationReq;
 import com.agentos.model.dto.SendMessageReq;
+import com.agentos.model.dto.UpdateConversationReq;
 import com.agentos.model.entity.Agent;
 import com.agentos.model.entity.Conversation;
 import com.agentos.model.entity.Message;
 import com.agentos.service.ConversationService;
+import com.agentos.service.TaskLogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -32,6 +34,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final AgentMapper agentMapper;
     private final AgentRuntimeClient agentRuntimeClient;
     private final ObjectMapper objectMapper;
+    private final TaskLogService taskLogService;
 
     @Override
     public Conversation create(CreateConversationReq req) {
@@ -60,6 +63,18 @@ public class ConversationServiceImpl implements ConversationService {
                 new Page<>(page, size),
                 new LambdaQueryWrapper<Conversation>()
                         .eq(Conversation::getUserId, userId)
+                        .orderByDesc(Conversation::getUpdatedAt)
+        );
+    }
+
+    @Override
+    public Page<Conversation> pageByAgent(Long agentId, int page, int size) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        return conversationMapper.selectPage(
+                new Page<>(page, size),
+                new LambdaQueryWrapper<Conversation>()
+                        .eq(Conversation::getUserId, userId)
+                        .eq(Conversation::getAgentId, agentId)
                         .orderByDesc(Conversation::getUpdatedAt)
         );
     }
@@ -102,10 +117,15 @@ public class ConversationServiceImpl implements ConversationService {
                 .map(m -> new AgentRuntimeClient.MessagePayload(m.getRole(), m.getContent()))
                 .collect(Collectors.toList());
 
+        String taskId = "conv-" + conversationId + "-" + System.currentTimeMillis();
+        taskLogService.info(taskId, conversation.getAgentId(), "开始调用 AI Runtime");
+
         AgentRuntimeClient.InvokeResponse response;
         try {
             response = agentRuntimeClient.invoke(conversation.getAgentId(), conversationId, payloads);
+            taskLogService.info(taskId, conversation.getAgentId(), "AI Runtime 调用成功");
         } catch (Exception e) {
+            taskLogService.error(taskId, conversation.getAgentId(), "调用失败: " + e.getMessage());
             throw new BusinessException("调用 AI Runtime 失败: " + e.getMessage());
         }
 
@@ -125,6 +145,27 @@ public class ConversationServiceImpl implements ConversationService {
 
         messageMapper.insert(assistantMessage);
         return messageMapper.selectById(assistantMessage.getId());
+    }
+
+    @Override
+    public Conversation update(Long id, UpdateConversationReq req) {
+        Conversation conversation = checkOwnership(id);
+        if (req.getTitle() != null) {
+            conversation.setTitle(req.getTitle());
+        }
+        if (req.getStatus() != null) {
+            conversation.setStatus(req.getStatus());
+        }
+        conversationMapper.updateById(conversation);
+        return conversationMapper.selectById(id);
+    }
+
+    @Override
+    public void delete(Long id) {
+        Conversation conversation = checkOwnership(id);
+        messageMapper.delete(new LambdaQueryWrapper<Message>()
+                .eq(Message::getConversationId, id));
+        conversationMapper.deleteById(id);
     }
 
     private Conversation checkOwnership(Long conversationId) {

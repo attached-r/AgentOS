@@ -7,8 +7,10 @@ import com.agentos.common.BusinessException;
 import com.agentos.mapper.AgentMapper;
 import com.agentos.model.entity.Agent;
 import com.agentos.service.AgentService;
+import com.agentos.service.TaskLogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -25,6 +27,8 @@ public class AgentServiceImpl implements AgentService {
 
     private final AgentMapper agentMapper;
     private final AgentRuntimeClient agentRuntimeClient;
+    private final ObjectMapper objectMapper;
+    private final TaskLogService taskLogService;
 
     @Override
     public List<Agent> list() {
@@ -33,14 +37,12 @@ public class AgentServiceImpl implements AgentService {
 
     @Override
     public Page<Agent> page(int page, int size) {
-        // 1. 获取当前用户 ID
         Long userId = StpUtil.getLoginIdAsLong();
-        // 2. 分页查询
-        return agentMapper.selectPage(     // 分页参数，第一个参数为当前页，第二个参数为每页大小
+        return agentMapper.selectPage(
                 new Page<>(page, size),
                 new LambdaQueryWrapper<Agent>()
                         .eq(Agent::getOwnerId, userId)
-                        .orderByDesc(Agent::getUpdatedAt)  // 按更新时间倒序
+                        .orderByDesc(Agent::getUpdatedAt)
         );
     }
 
@@ -58,12 +60,13 @@ public class AgentServiceImpl implements AgentService {
         if (agent.getName() == null || agent.getName().isBlank()) {
             throw new BusinessException("Agent 名称不能为空");
         }
-        agent.setId(null);// 设置 ID 为 null 因为MyBatis-Plus 会自动生成 ID
+        agent.setId(null);
         agent.setOwnerId(StpUtil.getLoginIdAsLong());
         if (agent.getStatus() == null) {
             agent.setStatus(1);
         }
         agentMapper.insert(agent);
+        syncAgentsToRuntimeQuietly();
         return agent;
     }
 
@@ -79,9 +82,9 @@ public class AgentServiceImpl implements AgentService {
         if (!exist.getOwnerId().equals(StpUtil.getLoginIdAsLong())) {
             throw new BusinessException("无权操作该 Agent");
         }
-        // 不允许修改 owner
         agent.setOwnerId(null);
         agentMapper.updateById(agent);
+        syncAgentsToRuntimeQuietly();
         return agentMapper.selectById(agent.getId());
     }
 
@@ -95,28 +98,52 @@ public class AgentServiceImpl implements AgentService {
             throw new BusinessException("无权操作该 Agent");
         }
         agentMapper.deleteById(id);
+        syncAgentsToRuntimeQuietly();
+    }
+    // 调用 Agent
+    @Override
+    public String invoke(Long id, String prompt) {
+        if (prompt == null || prompt.isBlank()) {
+            throw new BusinessException("prompt 不能为空");
+        }
+        Agent agent = getById(id);
+
+        List<AgentRuntimeClient.MessagePayload> messages = List.of(
+                new AgentRuntimeClient.MessagePayload("user", prompt)
+        );
+
+        String taskId = "invoke-" + id + "-" + System.currentTimeMillis();
+        taskLogService.info(taskId, id, "开始直接调用 Agent");
+
+        AgentRuntimeClient.InvokeResponse response;
+        try {
+            response = agentRuntimeClient.invoke(id, null, messages);
+            taskLogService.info(taskId, id, "Agent 调用成功");
+        } catch (Exception e) {
+            taskLogService.error(taskId, id, "调用失败: " + e.getMessage());
+            throw new BusinessException("调用 Agent 失败: " + e.getMessage());
+        }
+        return response.getContent();
+    }
+    // 全量 同步 Agents 到运行时 --v1
+    private void syncAgentsToRuntimeQuietly() {
+        try {
+            getAllagents();
+        } catch (Exception e) {
+            log.warn("syncAgentsToRuntime failed: {}", e.getMessage());
+        }
     }
 
+
+
+    // 应用启动时同步 Agents 到运行时
     @EventListener(ApplicationReadyEvent.class)
     public void syncAgentsToRuntime() {
         Exception lastException = null;
+        // 尝试 3 次
         for (int i = 0; i < 3; i++) {
             try {
-                List<Agent> agents = agentMapper.selectList(null);
-                List<SyncAgentRequest> syncList = agents.stream().map(a -> {
-                    SyncAgentRequest r = new SyncAgentRequest();
-                    r.setId(a.getId());
-                    r.setName(a.getName());
-                    r.setDescription(a.getDescription());
-                    r.setSystemPrompt(a.getSystemPrompt());
-                    r.setModelProvider(a.getModelProvider());
-                    r.setModelName(a.getModelName());
-                    r.setTemperature(a.getTemperature());
-                    r.setMaxTokens(a.getMaxTokens());
-                    return r;
-                }).collect(Collectors.toList());
-                agentRuntimeClient.syncAgents(syncList);
-                log.info("syncAgentsToRuntime success, count={}", syncList.size());
+                getAllagents();
                 return;
             } catch (Exception e) {
                 lastException = e;
@@ -130,5 +157,23 @@ public class AgentServiceImpl implements AgentService {
             }
         }
         log.warn("syncAgentsToRuntime failed after 3 retries (non-blocking): {}", lastException != null ? lastException.getMessage() : "unknown");
+    }
+
+    private void getAllagents() {
+        List<Agent> agents = agentMapper.selectList(null);
+        List<SyncAgentRequest> syncList = agents.stream().map(a -> {
+            SyncAgentRequest r = new SyncAgentRequest();
+            r.setId(a.getId());
+            r.setName(a.getName());
+            r.setDescription(a.getDescription());
+            r.setSystemPrompt(a.getSystemPrompt());
+            r.setModelProvider(a.getModelProvider());
+            r.setModelName(a.getModelName());
+            r.setTemperature(a.getTemperature());
+            r.setMaxTokens(a.getMaxTokens());
+            return r;
+        }).collect(Collectors.toList());
+        agentRuntimeClient.syncAgents(syncList);
+        log.info("syncAgentsToRuntime success, count={}", syncList.size());
     }
 }
