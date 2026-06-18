@@ -29,3 +29,18 @@
 
 
 启动  fastapi dev main.py
+
+流程
+用户在页面填入 Key → POST /api/user-api-keys
+   ↓
+用户发送消息 → ConversationServiceImpl.sendMessage()
+   ↓
+查 UserApiKeyMapper WHERE user_id=当前用户 AND provider=Agent.provider
+   ↓
+AgentRuntimeClient.invoke(agentId, ..., apiKey, baseUrl)
+   ↓
+POST /runtime/agents/{id}/invoke  { ..., apiKey: "sk-xxx" }
+   ↓
+invoke_routes.py: config["api_key"] = req.api_key
+   ↓
+LLMClient.from_agent_config(config) → 用用户自己的 Key 调用 LLM

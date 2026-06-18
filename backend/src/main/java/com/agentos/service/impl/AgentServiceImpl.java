@@ -117,7 +117,7 @@ public class AgentServiceImpl implements AgentService {
 
         AgentRuntimeClient.InvokeResponse response;
         try {
-            response = agentRuntimeClient.invoke(id, null, messages);
+            response = agentRuntimeClient.invoke(id, null, messages, null, null);
             taskLogService.info(taskId, id, "Agent 调用成功");
         } catch (Exception e) {
             taskLogService.error(taskId, id, "调用失败: " + e.getMessage());

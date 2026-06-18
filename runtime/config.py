@@ -23,7 +23,7 @@ class RuntimeConfig:
 
     # ── FastAPI 服务 ──────────────────────────────────────────────
     runtime_host: str = "0.0.0.0"
-    runtime_port: int = 8001
+    runtime_port: int = 8000
     runtime_debug: bool = False
     runtime_title: str = "AgentOS Runtime"
     log_level: str = "INFO"

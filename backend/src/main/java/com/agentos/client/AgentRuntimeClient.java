@@ -26,14 +26,19 @@ public class AgentRuntimeClient {
      * @param agentId          agent id
      * @param conversationId   conversation id
      * @param messages         messages
+     * @param apiKey           user-specific API key (optional)
+     * @param baseUrl          user-specific base URL (optional)
      * @return invoke response
      */
-    public InvokeResponse invoke(Long agentId, Long conversationId, List<MessagePayload> messages) {
+    public InvokeResponse invoke(Long agentId, Long conversationId, List<MessagePayload> messages,
+                                  String apiKey, String baseUrl) {
         String url = baseUrl + "/runtime/agents/" + agentId + "/invoke";
 
         InvokeRequest request = new InvokeRequest();
         request.setConversationId(conversationId);
         request.setMessages(messages);
+        request.setApiKey(apiKey);
+        request.setBaseUrl(baseUrl);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -79,6 +84,8 @@ public class AgentRuntimeClient {
     public static class InvokeRequest {
         private Long conversationId;
         private List<MessagePayload> messages;
+        private String apiKey;       // 用户自带的 API Key（可选，覆盖默认环境变量）
+        private String baseUrl;      // 用户自定的 base URL（可选）
     }
     // 消息载荷
     @Data
