@@ -14,7 +14,7 @@ LLM 客户端 —— 多供应商 LLM 调用抽象层。
 import os
 from typing import Dict, List, Optional
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI  #异步 OpenAI 客户端
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +40,10 @@ PROVIDER_CONFIG: Dict[str, Dict] = {
     "zhipu": {
         "base_url": "https://open.bigmodel.cn/api/paas/v4/",
         "api_key_env": "ZHIPU_API_KEY",
+    },
+    "deepseek": {
+        "base_url": "https://api.deepseek.com",
+        "api_key_env": "DEEPSEEK_API_KEY",
     },
 }
 
@@ -84,7 +88,7 @@ class LLMClient:
         )
         self.client = AsyncOpenAI(base_url=resolved_url, api_key=resolved_key)
 
-    @classmethod
+    @classmethod  # 类方法，用于从 agent_config 构造 LLMClient
     def from_agent_config(cls, config: dict) -> "LLMClient":
         """从 agent_registry 中的配置 dict 构造 LLMClient。"""
         provider = config.get("model_provider", "openai")
@@ -166,8 +170,8 @@ class LLMClient:
         if system_prompt:
             full_messages.insert(0, {"role": "system", "content": system_prompt})
 
-        try:
-            resp = await self.client.chat.completions.create(
+        try:  #? 异步调用 LLM API，处理异常
+            resp = await self.client.chat.completions.create( 
                 model=self.model_name,
                 messages=full_messages,
                 temperature=self.temperature,

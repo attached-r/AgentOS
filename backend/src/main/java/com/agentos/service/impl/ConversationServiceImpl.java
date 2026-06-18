@@ -6,12 +6,14 @@ import com.agentos.common.BusinessException;
 import com.agentos.mapper.AgentMapper;
 import com.agentos.mapper.ConversationMapper;
 import com.agentos.mapper.MessageMapper;
+import com.agentos.mapper.UserApiKeyMapper;
 import com.agentos.model.dto.CreateConversationReq;
 import com.agentos.model.dto.SendMessageReq;
 import com.agentos.model.dto.UpdateConversationReq;
 import com.agentos.model.entity.Agent;
 import com.agentos.model.entity.Conversation;
 import com.agentos.model.entity.Message;
+import com.agentos.model.entity.UserApiKey;
 import com.agentos.service.ConversationService;
 import com.agentos.service.TaskLogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -32,10 +34,16 @@ public class ConversationServiceImpl implements ConversationService {
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
     private final AgentMapper agentMapper;
+    private final UserApiKeyMapper userApiKeyMapper;
     private final AgentRuntimeClient agentRuntimeClient;
     private final ObjectMapper objectMapper;
     private final TaskLogService taskLogService;
-
+    /**
+     * 创建会话
+     *
+     * @param req 创建会话请求
+     * @return 会话
+     */
     @Override
     public Conversation create(CreateConversationReq req) {
         if (req.getAgentId() == null) {
@@ -56,6 +64,13 @@ public class ConversationServiceImpl implements ConversationService {
         return conversation;
     }
 
+    /**
+     * 分页获取会话列表
+     *
+     * @param page 页码
+     * @param size 每页大小
+     * @return 会话分页列表
+     */
     @Override
     public Page<Conversation> page(int page, int size) {
         Long userId = StpUtil.getLoginIdAsLong();
@@ -66,7 +81,14 @@ public class ConversationServiceImpl implements ConversationService {
                         .orderByDesc(Conversation::getUpdatedAt)
         );
     }
-
+    /**
+     * 分页获取指定 Agent 的会话列表
+     *
+     * @param agentId Agent ID
+     * @param page    页码
+     * @param size    每页大小
+     * @return 会话分页列表
+     */
     @Override
     public Page<Conversation> pageByAgent(Long agentId, int page, int size) {
         Long userId = StpUtil.getLoginIdAsLong();
@@ -78,7 +100,12 @@ public class ConversationServiceImpl implements ConversationService {
                         .orderByDesc(Conversation::getUpdatedAt)
         );
     }
-
+    /**
+     * 获取会话消息列表
+     *
+     * @param conversationId 会话 ID
+     * @return 消息列表
+     */
     @Override
     public List<Message> getMessages(Long conversationId) {
         checkOwnership(conversationId);
@@ -88,7 +115,13 @@ public class ConversationServiceImpl implements ConversationService {
                         .orderByAsc(Message::getCreatedAt)
         );
     }
-
+    /**
+     * 发送消息
+     *
+     * @param conversationId 会话 ID
+     * @param req            发送消息请求
+     * @return 发送的消息
+     */
     @Override
     @Transactional
     public Message sendMessage(Long conversationId, SendMessageReq req) {
@@ -112,7 +145,24 @@ public class ConversationServiceImpl implements ConversationService {
                         .orderByAsc(Message::getCreatedAt)
         );
 
-        // 3. 调用 Python Runtime
+        // 3. 获取用户自带的 API Key（如有）
+        Agent agent = agentMapper.selectById(conversation.getAgentId());
+        String userApiKey = null;
+        String userBaseUrl = null;
+        if (agent != null) {
+            UserApiKey key = userApiKeyMapper.selectOne(
+                    new LambdaQueryWrapper<UserApiKey>()
+                            .eq(UserApiKey::getUserId, StpUtil.getLoginIdAsLong())
+                            .eq(UserApiKey::getProvider, agent.getModelProvider())
+                            .eq(UserApiKey::getIsActive, 1)
+            );
+            if (key != null) {
+                userApiKey = key.getApiKey();
+                userBaseUrl = key.getBaseUrl();
+            }
+        }
+
+        // 4. 调用 Python Runtime
         List<AgentRuntimeClient.MessagePayload> payloads = history.stream()
                 .map(m -> new AgentRuntimeClient.MessagePayload(m.getRole(), m.getContent()))
                 .collect(Collectors.toList());
@@ -122,7 +172,7 @@ public class ConversationServiceImpl implements ConversationService {
 
         AgentRuntimeClient.InvokeResponse response;
         try {
-            response = agentRuntimeClient.invoke(conversation.getAgentId(), conversationId, payloads);
+            response = agentRuntimeClient.invoke(conversation.getAgentId(), conversationId, payloads, userApiKey, userBaseUrl);
             taskLogService.info(taskId, conversation.getAgentId(), "AI Runtime 调用成功");
         } catch (Exception e) {
             taskLogService.error(taskId, conversation.getAgentId(), "调用失败: " + e.getMessage());
@@ -146,7 +196,13 @@ public class ConversationServiceImpl implements ConversationService {
         messageMapper.insert(assistantMessage);
         return messageMapper.selectById(assistantMessage.getId());
     }
-
+    /**
+     * 更新会话
+     *
+     * @param id     会话 ID
+     * @param req    更新请求
+     * @return 更新后的会话
+     */
     @Override
     public Conversation update(Long id, UpdateConversationReq req) {
         Conversation conversation = checkOwnership(id);
@@ -159,7 +215,11 @@ public class ConversationServiceImpl implements ConversationService {
         conversationMapper.updateById(conversation);
         return conversationMapper.selectById(id);
     }
-
+    /**
+     * 删除会话
+     *
+     * @param id 会话 ID
+     */
     @Override
     public void delete(Long id) {
         Conversation conversation = checkOwnership(id);
@@ -167,7 +227,12 @@ public class ConversationServiceImpl implements ConversationService {
                 .eq(Message::getConversationId, id));
         conversationMapper.deleteById(id);
     }
-
+    /**
+     * 检查会话所有权
+     *
+     * @param conversationId 会话 ID
+     * @return 会话
+     */
     private Conversation checkOwnership(Long conversationId) {
         Conversation conversation = conversationMapper.selectById(conversationId);
         if (conversation == null) {

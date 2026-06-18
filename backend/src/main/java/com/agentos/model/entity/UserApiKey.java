@@ -6,20 +6,25 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("message")
-public class Message {
+@TableName("user_api_key")
+public class UserApiKey {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private Long conversationId;
+    private Long userId;
 
-    private String role;  // user, assistant, system
+    private String provider;
 
-    private String content;
+    private String apiKey;
 
-    private String metadata;
+    private String baseUrl;
+
+    private Integer isActive;
 
     @TableField(insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
     private LocalDateTime createdAt;
+
+    @TableField(insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
+    private LocalDateTime updatedAt;
 }

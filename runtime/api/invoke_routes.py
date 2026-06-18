@@ -16,13 +16,15 @@ Agent 调用端点 —— V1 核心闭环。
   - 请求参数异常 → 400
   - 其他内部错误 → 500
 """
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from agents.registry import agent_registry
 from core.llm import LLMClient
 
-router = APIRouter()
+router = APIRouter()  #?  fastapi 路由器，用于注册路由
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +39,8 @@ class InvokeRequest(BaseModel):
     """
     conversation_id: int = Field(default=0, alias="conversationId")
     messages: list[dict] = Field(default=[])
+    api_key: Optional[str] = Field(default=None, alias="apiKey")
+    base_url: Optional[str] = Field(default=None, alias="baseUrl")
 
     model_config = {"populate_by_name": True}
 
@@ -91,7 +95,13 @@ async def invoke_agent(agent_id: int, req: InvokeRequest):
     if not req.messages:
         raise HTTPException(status_code=400, detail="消息列表不能为空")
 
-    # 3) 构造 LLM 客户端，直接调用（后端已传入完整消息列表）
+    # 3) 如果请求中带了用户自有的 API Key / Base URL，覆盖到 config 中
+    if req.api_key:
+        config["api_key"] = req.api_key
+    if req.base_url:
+        config["base_url"] = req.base_url
+
+    # 4) 构造 LLM 客户端，直接调用（后端已传入完整消息列表）
     llm_client = LLMClient.from_agent_config(config)
 
     try:

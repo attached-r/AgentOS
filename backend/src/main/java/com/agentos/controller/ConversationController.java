@@ -21,40 +21,73 @@ import java.util.List;
 public class ConversationController {
 
     private final ConversationService conversationService;
-
+    /**
+     * 创建对话
+     *
+     * @param req 对话参数
+     * @return 对话
+     */
     @PostMapping
     @SaCheckLogin
     public R<Conversation> create(@Valid @RequestBody CreateConversationReq req) {
         return R.ok(conversationService.create(req));
     }
-
+    /**
+     * 获取所有对话
+     *
+     * @param page 页码
+     * @param size 每页大小
+     * @return 对话
+     */
     @GetMapping
     @SaCheckLogin
     public R<Page<Conversation>> page(@RequestParam(defaultValue = "1") int page,
                                        @RequestParam(defaultValue = "10") int size) {
         return R.ok(conversationService.page(page, size));
     }
-
+    /**
+     * 获取对话消息
+     *
+     * @param id 对话id
+     * @return 消息
+     */
     @GetMapping("/{id}/messages")
     @SaCheckLogin
     public R<List<Message>> getMessages(@PathVariable Long id) {
         return R.ok(conversationService.getMessages(id));
     }
-
+    /**
+     * 发送消息
+     *
+     * @param id 对话id
+     * @param req 消息参数
+     * @return 消息
+     */
     @PostMapping("/{id}/messages")
     @SaCheckLogin
     public R<Message> sendMessage(@PathVariable Long id,
                                    @Valid @RequestBody SendMessageReq req) {
         return R.ok(conversationService.sendMessage(id, req));
     }
-
+    /**
+     * 更新对话
+     *
+     * @param id 对话id
+     * @param req 对话参数
+     * @return 对话
+     */
     @PutMapping("/{id}")
     @SaCheckLogin
     public R<Conversation> update(@PathVariable Long id,
                                    @RequestBody UpdateConversationReq req) {
         return R.ok(conversationService.update(id, req));
     }
-
+    /**
+     * 删除对话
+     *
+     * @param id 对话id
+     * @return void
+     */
     @DeleteMapping("/{id}")
     @SaCheckLogin
     public R<Void> delete(@PathVariable Long id) {
