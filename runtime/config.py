@@ -39,7 +39,7 @@ class RuntimeConfig:
         """从环境变量加载配置。"""
         return cls(
             runtime_host=os.getenv("RUNTIME_HOST", "0.0.0.0"),
-            runtime_port=int(os.getenv("RUNTIME_PORT", "8001")),
+            runtime_port=int(os.getenv("RUNTIME_PORT", "8000")),
             runtime_debug=os.getenv("RUNTIME_DEBUG", "").lower() == "true",
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             default_model_provider=os.getenv("DEFAULT_MODEL_PROVIDER", "openai"),
