@@ -1,0 +1,43 @@
+src/
+├── main.ts                      # 入口：Pinia + Router + Element Plus
+├── App.vue                      # <router-view /> 壳组件
+├── style.css                    # 全局样式 + Element Plus 覆盖
+│
+├── types/
+│   ├── api.ts                   # R<T>, PageParams, PageResult
+│   ├── auth.ts                  # LoginRequest, LoginResp, UserInfo
+│   ├── agent.ts                 # Agent, AgentFormData
+│   └── conversation.ts          # Conversation, Message, SendMessageRequest
+│
+├── api/
+│   ├── request.ts               # Axios 实例 + token 注入 + 401 拦截
+│   ├── auth.ts                  # login / register / refresh / logout
+│   ├── agents.ts                # CRUD + invoke
+│   ├── conversations.ts         # CRUD + getMessages + sendMessage
+│   ├── api-keys.ts              # CRUD
+│   └── task-logs.ts             # 分页查询
+│
+├── stores/
+│   └── auth.ts                  # useAuthStore（token + user + login + logout）
+│
+├── router/
+│   ├── index.ts                 # 7 条路由（含 /api-keys）
+│   └── guard.ts                 # 路由守卫（已登录 → 放行，未登录 → /login）
+│
+├── layouts/
+│   └── LayoutMain.vue           # 侧边栏（仪表盘/Agent/对话/API Key）+ Header
+│
+├── views/
+│   ├── LoginView.vue            # 登录页（渐变背景 + 表单校验）
+│   ├── DashboardView.vue        # 仪表盘（统计卡片 + 最近对话）
+│   ├── AgentListView.vue        # Agent 列表（搜索 + 表格 + 分页 + 删除）
+│   ├── AgentFormView.vue        # Agent 表单（新建/编辑复用）
+│   ├── ConversationListView.vue # 对话列表（含新建弹窗 + 选择 Agent）
+│   ├── ChatView.vue             # 聊天页（消息气泡 + 输入框 + 重试）
+│   └── ApiKeysView.vue          # API Key 管理
+
+
+v1_statge
+说明：
+请确保下载以下依赖[vue-router@4 · pinia · axios · element-plus · @element-plus/icons-vue · echarts · vue-echarts]
+`npm install ...`
