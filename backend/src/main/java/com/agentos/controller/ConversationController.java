@@ -22,6 +22,18 @@ public class ConversationController {
 
     private final ConversationService conversationService;
     /**
+     * 获取单个对话
+     *
+     * @param id 对话ID
+     * @return 对话
+     */
+    @GetMapping("/{id}")
+    @SaCheckLogin
+    public R<Conversation> get(@PathVariable Long id) {
+        return R.ok(conversationService.getById(id));
+    }
+
+    /**
      * 创建对话
      *
      * @param req 对话参数

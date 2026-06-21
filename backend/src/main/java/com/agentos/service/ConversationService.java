@@ -15,6 +15,8 @@ public interface ConversationService {
 
     Page<Conversation> page(int page, int size);
 
+    Conversation getById(Long id);
+
     Page<Conversation> pageByAgent(Long agentId, int page, int size);
 
     List<Message> getMessages(Long conversationId);

@@ -27,18 +27,18 @@ public class AgentRuntimeClient {
      * @param conversationId   conversation id
      * @param messages         messages
      * @param apiKey           user-specific API key (optional)
-     * @param baseUrl          user-specific base URL (optional)
+     * @param userBaseUrl          user-specific base URL (optional)
      * @return invoke response
      */
     public InvokeResponse invoke(Long agentId, Long conversationId, List<MessagePayload> messages,
-                                  String apiKey, String baseUrl) {
-        String url = baseUrl + "/runtime/agents/" + agentId + "/invoke";
+                                  String apiKey, String userBaseUrl) {
+        String url = this.baseUrl + "/runtime/agents/" + agentId + "/invoke";
 
         InvokeRequest request = new InvokeRequest();
         request.setConversationId(conversationId);
         request.setMessages(messages);
         request.setApiKey(apiKey);
-        request.setBaseUrl(baseUrl);
+        request.setBaseUrl(userBaseUrl);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
