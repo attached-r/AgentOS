@@ -1,5 +1,6 @@
 package com.agentos.model.entity;
 
+import com.agentos.common.JsonbTypeHandler;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
@@ -18,6 +19,7 @@ public class Message {
 
     private String content;
 
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String metadata;
 
     @TableField(insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)

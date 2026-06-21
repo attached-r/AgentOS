@@ -82,6 +82,14 @@ public class ConversationServiceImpl implements ConversationService {
         );
     }
     /**
+     * 根据 ID 获取会话（带所有权校验）
+     */
+    @Override
+    public Conversation getById(Long id) {
+        return checkOwnership(id);
+    }
+
+    /**
      * 分页获取指定 Agent 的会话列表
      *
      * @param agentId Agent ID
