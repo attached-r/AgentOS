@@ -82,20 +82,30 @@ onMounted(fetchAgents)
       </el-form>
 
       <el-table :data="agents" v-loading="loading" stripe empty-text="暂无 Agent 数据">
-        <el-table-column prop="name" label="名称" min-width="160" />
+        <el-table-column label="名称" min-width="160">
+          <template #default="{ row }">
+            <div class="agent-name-cell">
+              <span class="status-dot" :class="row.status === 1 ? 'dot-active' : 'dot-inactive'"></span>
+              {{ row.name }}
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="modelName" label="模型" width="160" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="plain">
               {{ row.status === 1 ? '运行中' : '已停止' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="router.push(`/agents/${row.id}/edit`)">
               编辑
+            </el-button>
+            <el-button size="small" @click="router.push(`/agents/${row.id}/memories`)">
+              记忆
             </el-button>
             <el-button size="small" type="danger" @click="handleDelete(row)">
               删除
@@ -124,19 +134,32 @@ onMounted(fetchAgents)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .page-header h2 {
   margin: 0;
-  font-size: 20px;
-  color: #303133;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
-.search-form {
-  margin-bottom: 0;
-}
-.pagination-wrap {
-  margin-top: 16px;
+
+/* Agent 名称 + 状态点 */
+.agent-name-cell {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-active {
+  background: #67c23a;
+  box-shadow: 0 0 0 2px rgba(103, 194, 58, 0.2);
+}
+.dot-inactive {
+  background: #c0c4cc;
 }
 </style>

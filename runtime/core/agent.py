@@ -8,7 +8,7 @@ Agent 基类 —— 所有 Agent 实现的抽象基类。
   4. run() 为抽象方法，子类必须实现不同的执行策略
 
 V1 子类：SimpleAgent（直接调用 LLM）
-V2 扩展：ReActAgent、ReflectionAgent 等
+V2 子类：ReActAgent（多轮推理 + 工具调用）、ReflectionAgent 等
 """
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
@@ -29,10 +29,12 @@ class BaseAgent(ABC):
         name: str,
         llm_client: LLMClient,
         system_prompt: Optional[str] = None,
+        tool_registry: Optional["ToolRegistry"] = None,  # ← V2 新增：工具注册表
     ):
         self.name = name
         self.llm_client = llm_client
         self.system_prompt = system_prompt
+        self.tool_registry = tool_registry  # V2 新增
         self._history: List[Message] = []
 
     # ------------------------------------------------------------------

@@ -4,10 +4,12 @@
 
 from .registry import AgentConfig, AgentRegistry, agent_registry
 from .simple_agent import SimpleAgent
+from .react_agent import ReActAgent
 
 __all__ = [
     "AgentConfig",
     "AgentRegistry",
     "agent_registry",
     "SimpleAgent",
+    "ReActAgent",
 ]

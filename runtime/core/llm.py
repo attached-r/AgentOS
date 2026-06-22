@@ -5,11 +5,19 @@ LLM 客户端 —— 多供应商 LLM 调用抽象层。
   1. 通过 PROVIDER_CONFIG 注册表管理不同供应商的 base_url / API Key 策略
   2. 自动从环境变量解析凭据（供应商专用变量 → 通用 LLM_API_KEY / LLM_BASE_URL）
   3. 统一 invoke() 接口，返回结构化结果（content + usage）
-  4. 为 V2 流式预留 stream_invoke() 接口
+  4. 【V2 新增】invoke() 支持 tools 参数（OpenAI function calling）
+  5. 【V2 预留】stream_invoke() 流式接口
 
 用法：
     client = LLMClient(model_provider="openai", model_name="gpt-4o-mini")
     result = await client.invoke(messages=[...], system_prompt="...")
+
+    # V2：带工具调用
+    result = await client.invoke(
+        messages=[...],
+        tools=[{"type": "function", "function": {...}}],
+    )
+    # result 含 tool_calls 字段
 """
 import os
 from typing import Dict, List, Optional
@@ -145,21 +153,32 @@ class LLMClient:
         self,
         messages: List[Dict[str, str]],
         system_prompt: Optional[str] = None,
+        tools: Optional[List[Dict]] = None,  # ← V2 新增：OpenAI function calling schema 列表
     ) -> Dict:
         """
         调用 LLM，返回结构化的响应内容 + token 用量。
 
+        V2 新增 tools 参数：
+          - 传入 OpenAI function calling 格式的工具描述列表
+          - LLM 可选择返回 tool_calls（而非普通 content）
+          - ReActAgent 据此执行工具调用
+
         Args:
             messages:  格式为 [{"role": "user", "content": "..."}] 的历史消息
             system_prompt: 可选的 system prompt，会插入到消息列表最前面
+            tools:     【V2】OpenAI function calling 工具 schema 列表
+                       格式如 [{"type": "function", "function": {"name": "...", ...}}]
 
         Returns:
             {
-                "content": "LLM 回复文本",
+                "content": "LLM 回复文本"，
+                "tool_calls": None 或 [
+                    ChoiceDeltaToolCall(id="call_xxx", function={"name": "...", "arguments": "..."}, ...)
+                ],
                 "usage": {
                     "prompt_tokens": int,
-                    "completion_tokens": int,
-                    "total_tokens": int,
+                    "completion_tokens": int，
+                    "total_tokens": int，
                 }
             }
 
@@ -170,18 +189,26 @@ class LLMClient:
         if system_prompt:
             full_messages.insert(0, {"role": "system", "content": system_prompt})
 
+        # 构建调用参数
+        kwargs = {
+            "model": self.model_name,
+            "messages": full_messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+        # V2：如果有工具 schema，传入 OpenAI function calling
+        if tools:
+            kwargs["tools"] = tools
+
         try:  #? 异步调用 LLM API，处理异常
-            resp = await self.client.chat.completions.create( 
-                model=self.model_name,
-                messages=full_messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
+            resp = await self.client.chat.completions.create(**kwargs)
         except Exception as e:
             raise RuntimeError(f"LLM API 调用失败: {e}") from e
 
+        choice = resp.choices[0]
         return {
-            "content": resp.choices[0].message.content or "",
+            "content": choice.message.content or "",
+            "tool_calls": choice.message.tool_calls,  # ← V2 新增：None 或 list of tool calls
             "usage": {
                 "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
                 "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,

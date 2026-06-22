@@ -66,7 +66,8 @@ public class AgentServiceImpl implements AgentService {
             agent.setStatus(1);
         }
         agentMapper.insert(agent);
-        syncAgentsToRuntimeQuietly();
+        // V2 优化：增量 upsert，不再全量同步
+        upsertAgentToRuntime(agentMapper.selectById(agent.getId()));
         return agent;
     }
 
@@ -84,7 +85,8 @@ public class AgentServiceImpl implements AgentService {
         }
         agent.setOwnerId(null);
         agentMapper.updateById(agent);
-        syncAgentsToRuntimeQuietly();
+        // V2 优化：增量 upsert，不再全量同步
+        upsertAgentToRuntime(agentMapper.selectById(agent.getId()));
         return agentMapper.selectById(agent.getId());
     }
 
@@ -98,7 +100,8 @@ public class AgentServiceImpl implements AgentService {
             throw new BusinessException("无权操作该 Agent");
         }
         agentMapper.deleteById(id);
-        syncAgentsToRuntimeQuietly();
+        // V2 优化：增量 delete，不再全量同步
+        deleteAgentFromRuntime(id);
     }
     // 调用 Agent
     @Override
@@ -117,7 +120,7 @@ public class AgentServiceImpl implements AgentService {
 
         AgentRuntimeClient.InvokeResponse response;
         try {
-            response = agentRuntimeClient.invoke(id, null, messages, null, null);
+            response = agentRuntimeClient.invoke(id, null, messages, null, null, null);
             taskLogService.info(taskId, id, "Agent 调用成功");
         } catch (Exception e) {
             taskLogService.error(taskId, id, "调用失败: " + e.getMessage());
@@ -125,25 +128,41 @@ public class AgentServiceImpl implements AgentService {
         }
         return response.getContent();
     }
-    // 全量 同步 Agents 到运行时 --v1
-    private void syncAgentsToRuntimeQuietly() {
+    // ── 增量同步（CRUD 用） ─────────────────────────────────────
+
+    private void upsertAgentToRuntime(Agent agent) {
+        // V2 优化：仅推送单个 Agent，避免全量查询和传输
         try {
-            getAllagents();
+            SyncAgentRequest r = toSyncRequest(agent);
+            agentRuntimeClient.upsertAgent(r);
         } catch (Exception e) {
-            log.warn("syncAgentsToRuntime failed: {}", e.getMessage());
+            log.warn("upsertAgent failed: {}", e.getMessage());
         }
     }
 
+    private void deleteAgentFromRuntime(Long agentId) {
+        // V2 优化：仅推送删除 ID，避免全量查询和传输
+        try {
+            agentRuntimeClient.deleteAgent(agentId);
+        } catch (Exception e) {
+            log.warn("deleteAgent failed: {}", e.getMessage());
+        }
+    }
 
+    // ── 全量同步（启动时用） ─────────────────────────────────────
 
-    // 应用启动时同步 Agents 到运行时
+    // 应用启动时全量同步 Agents 到 Runtime
     @EventListener(ApplicationReadyEvent.class)
     public void syncAgentsToRuntime() {
         Exception lastException = null;
-        // 尝试 3 次
         for (int i = 0; i < 3; i++) {
             try {
-                getAllagents();
+                List<Agent> agents = agentMapper.selectList(null);
+                List<SyncAgentRequest> syncList = agents.stream()
+                        .map(this::toSyncRequest)
+                        .collect(Collectors.toList());
+                agentRuntimeClient.syncAgents(syncList);
+                log.info("syncAgentsToRuntime success, count={}", syncList.size());
                 return;
             } catch (Exception e) {
                 lastException = e;
@@ -159,21 +178,16 @@ public class AgentServiceImpl implements AgentService {
         log.warn("syncAgentsToRuntime failed after 3 retries (non-blocking): {}", lastException != null ? lastException.getMessage() : "unknown");
     }
 
-    private void getAllagents() {
-        List<Agent> agents = agentMapper.selectList(null);
-        List<SyncAgentRequest> syncList = agents.stream().map(a -> {
-            SyncAgentRequest r = new SyncAgentRequest();
-            r.setId(a.getId());
-            r.setName(a.getName());
-            r.setDescription(a.getDescription());
-            r.setSystemPrompt(a.getSystemPrompt());
-            r.setModelProvider(a.getModelProvider());
-            r.setModelName(a.getModelName());
-            r.setTemperature(a.getTemperature());
-            r.setMaxTokens(a.getMaxTokens());
-            return r;
-        }).collect(Collectors.toList());
-        agentRuntimeClient.syncAgents(syncList);
-        log.info("syncAgentsToRuntime success, count={}", syncList.size());
+    private SyncAgentRequest toSyncRequest(Agent a) {
+        SyncAgentRequest r = new SyncAgentRequest();
+        r.setId(a.getId());
+        r.setName(a.getName());
+        r.setDescription(a.getDescription());
+        r.setSystemPrompt(a.getSystemPrompt());
+        r.setModelProvider(a.getModelProvider());
+        r.setModelName(a.getModelName());
+        r.setTemperature(a.getTemperature());
+        r.setMaxTokens(a.getMaxTokens());
+        return r;
     }
 }
