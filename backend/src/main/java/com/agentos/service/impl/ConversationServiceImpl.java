@@ -14,19 +14,26 @@ import com.agentos.model.entity.Agent;
 import com.agentos.model.entity.Conversation;
 import com.agentos.model.entity.Message;
 import com.agentos.model.entity.UserApiKey;
+import com.agentos.model.entity.Tool;
 import com.agentos.service.ConversationService;
 import com.agentos.service.TaskLogService;
+import com.agentos.service.ToolService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConversationServiceImpl implements ConversationService {
@@ -38,6 +45,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final AgentRuntimeClient agentRuntimeClient;
     private final ObjectMapper objectMapper;
     private final TaskLogService taskLogService;
+    private final ToolService toolService;
     /**
      * 创建会话
      *
@@ -170,7 +178,31 @@ public class ConversationServiceImpl implements ConversationService {
             }
         }
 
-        // 4. 调用 Python Runtime
+        // 4. 获取 Agent 绑定的已启用 MCP 工具（V2 新增）
+        List<Map<String, Object>> toolSchemas = null;
+        try {
+            List<Tool> agentTools = toolService.getEnabledToolsByAgent(conversation.getAgentId());
+            if (!agentTools.isEmpty()) {
+                toolSchemas = agentTools.stream()
+                        .map(t -> {
+                            try {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> schemaMap = objectMapper.readValue(t.getSchema(), Map.class);
+                                return schemaMap;
+                            } catch (JsonProcessingException e) {
+                                log.warn("工具 [{}] schema 解析失败: {}", t.getName(), e.getMessage());
+                                return null;
+                            }
+                        })
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+            }
+        } catch (Exception e) {
+            // 工具加载失败不阻塞对话，降级为无工具调用
+            log.warn("加载 Agent 工具列表失败: {}", e.getMessage());
+        }
+
+        // 5. 调用 Python Runtime（携带工具上下文）
         List<AgentRuntimeClient.MessagePayload> payloads = history.stream()
                 .map(m -> new AgentRuntimeClient.MessagePayload(m.getRole(), m.getContent()))
                 .collect(Collectors.toList());
@@ -180,7 +212,10 @@ public class ConversationServiceImpl implements ConversationService {
 
         AgentRuntimeClient.InvokeResponse response;
         try {
-            response = agentRuntimeClient.invoke(conversation.getAgentId(), conversationId, payloads, userApiKey, userBaseUrl);
+            response = agentRuntimeClient.invoke(
+                    conversation.getAgentId(), conversationId, payloads,
+                    userApiKey, userBaseUrl, toolSchemas
+            );
             taskLogService.info(taskId, conversation.getAgentId(), "AI Runtime 调用成功");
         } catch (Exception e) {
             taskLogService.error(taskId, conversation.getAgentId(), "调用失败: " + e.getMessage());
@@ -193,12 +228,20 @@ public class ConversationServiceImpl implements ConversationService {
         assistantMessage.setRole("assistant");
         assistantMessage.setContent(response.getContent());
 
-        if (response.getUsage() != null) {
-            try {
-                assistantMessage.setMetadata(objectMapper.writeValueAsString(response.getUsage()));
-            } catch (JsonProcessingException e) {
-                assistantMessage.setMetadata("{}");
+        // V2 修复：metadata 中同时存储 token 用量和工具调用步骤（供前端展示）
+        try {
+            Map<String, Object> meta = new java.util.HashMap<>();
+            if (response.getUsage() != null) {
+                meta.put("prompt_tokens", response.getUsage().getPromptTokens());
+                meta.put("completion_tokens", response.getUsage().getCompletionTokens());
+                meta.put("total_tokens", response.getUsage().getTotalTokens());
             }
+            if (response.getSteps() != null && !response.getSteps().isEmpty()) {
+                meta.put("steps", response.getSteps());
+            }
+            assistantMessage.setMetadata(objectMapper.writeValueAsString(meta.isEmpty() ? null : meta));
+        } catch (JsonProcessingException e) {
+            assistantMessage.setMetadata("{}");
         }
 
         messageMapper.insert(assistantMessage);

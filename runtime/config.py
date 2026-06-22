@@ -5,7 +5,7 @@
 所有配置项都有默认值，通过 `.env` 文件或环境变量覆盖。
 """
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -34,6 +34,21 @@ class RuntimeConfig:
     default_temperature: float = 0.7
     default_max_tokens: int = 4096
 
+    # ── 后端 API（Runtime → Backend 回调，用于持久化记忆 / RAG）──
+    backend_base_url: str = "http://localhost:8080"
+
+    # ── ReAct Agent ──────────────────────────────────────────
+    react_max_steps: int = 10
+
+    # ── MCP 超时（秒）─────────────────────────────────────────
+    mcp_connection_timeout: int = 30
+    mcp_read_timeout: int = 60
+
+    # ── 嵌入 / 向量（V3 启用）──
+    # embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    # qdrant_host: str = "localhost"
+    # qdrant_port: int = 6333
+
     @classmethod
     def from_env(cls) -> "RuntimeConfig":
         """从环境变量加载配置。"""
@@ -46,6 +61,10 @@ class RuntimeConfig:
             default_model_name=os.getenv("DEFAULT_MODEL_NAME", "gpt-4o-mini"),
             default_temperature=float(os.getenv("DEFAULT_TEMPERATURE", "0.7")),
             default_max_tokens=int(os.getenv("DEFAULT_MAX_TOKENS", "4096")),
+            backend_base_url=os.getenv("BACKEND_BASE_URL", "http://localhost:8080"),
+            react_max_steps=int(os.getenv("REACT_MAX_STEPS", "10")),
+            mcp_connection_timeout=int(os.getenv("MCP_CONNECTION_TIMEOUT", "30")),
+            mcp_read_timeout=int(os.getenv("MCP_READ_TIMEOUT", "60")),
         )
 
 

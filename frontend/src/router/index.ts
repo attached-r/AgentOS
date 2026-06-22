@@ -34,6 +34,21 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/AgentFormView.vue'),
       },
       {
+        path: 'agents/:id/memories',
+        name: 'AgentMemories',
+        component: () => import('@/views/AgentMemoriesView.vue'),
+      },
+      {
+        path: 'tools',
+        name: 'ToolCenter',
+        component: () => import('@/views/ToolCenterView.vue'),
+      },
+      {
+        path: 'knowledge',
+        name: 'Knowledge',
+        component: () => import('@/views/KnowledgeView.vue'),
+      },
+      {
         path: 'conversations',
         name: 'ConversationList',
         component: () => import('@/views/ConversationListView.vue'),

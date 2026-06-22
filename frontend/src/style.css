@@ -1,4 +1,17 @@
-/* AgentOS 全局样式 */
+/* AgentOS 全局基础样式 — 克制、不越界 */
+
+:root {
+  --color-bg: #f0f2f5;
+  --color-bg-card: #ffffff;
+  --color-text-primary: #1d2129;
+  --color-text-secondary: #4e5969;
+  --color-text-muted: #86909c;
+  --color-border: #e8eaef;
+  --color-primary: #409eff;
+  --radius-card: 10px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 6px 20px rgba(0, 0, 0, 0.07);
+}
 
 * {
   margin: 0;
@@ -14,34 +27,58 @@ html, body, #app {
 }
 
 body {
-  background-color: #f5f7fa;
-  color: #303133;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
 }
 
-/* Element Plus 全局覆盖 */
-.el-menu {
-  border-right: none !important;
-}
-
+/* 卡片重置 — 不再用 !important */
 .el-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s ease;
 }
 
+/* 表格表头统一样式 */
 .el-table th.el-table__cell {
-  background-color: #fafafa !important;
-  color: #606266;
+  background-color: #f8f9fb;
+  color: var(--color-text-secondary);
   font-weight: 600;
 }
 
-/* 滚动条美化 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* 表格行 hover */
+.el-table .el-table__row:hover > td.el-table__cell {
+  background-color: #f2f6fc;
 }
-::-webkit-scrollbar-thumb {
-  background-color: #c0c4cc;
-  border-radius: 3px;
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b5b8be; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 页面级统一样式 — 各页面引用这些 class */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
 }
-::-webkit-scrollbar-track {
-  background-color: transparent;
+.page-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.3px;
+}
+
+.pagination-wrap,
+.pagination-wrapper {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.el-menu {
+  border-right: none;
 }

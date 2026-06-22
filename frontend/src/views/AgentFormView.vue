@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getAgentApi, createAgentApi, updateAgentApi } from '@/api/agents'
+import { getToolsApi, getAgentToolsApi, bindToolsApi } from '@/api/tools'
 import type { FormInstance } from 'element-plus'
 import type { AgentFormData } from '@/types/agent'
+import type { Tool } from '@/types/tool'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +38,38 @@ const rules = {
   systemPrompt: [{ required: true, message: '请输入系统提示词', trigger: 'blur' }],
 }
 
+// ==================== 工具绑定 ====================
+
+const mcpTools = ref<Tool[]>([])           // 所有 MCP 工具
+const boundToolIds = ref<number[]>([])      // 已绑定的工具 ID 列表
+const loadingTools = ref(false)
+
+// 只有在编辑模式下才加载工具绑定
+async function loadToolsBinding() {
+  if (!isEdit.value) return
+  loadingTools.value = true
+  try {
+    // 加载所有 MCP 工具
+    const toolsRes = await getToolsApi({ page: 1, size: 999, source: 'mcp' })
+    mcpTools.value = toolsRes.data.data.records
+
+    // 加载当前已绑定的工具
+    const boundRes = await getAgentToolsApi(Number(route.params.id))
+    boundToolIds.value = boundRes.data.data.map(t => t.id)
+  } catch (e: any) {
+    ElMessage.error(e.message || '加载工具列表失败')
+  } finally {
+    loadingTools.value = false
+  }
+}
+
+// 当切换到编辑模式时加载工具
+watch(isEdit, (val) => {
+  if (val) {
+    loadToolsBinding()
+  }
+})
+
 onMounted(async () => {
   if (isEdit.value) {
     pageLoading.value = true
@@ -50,6 +84,8 @@ onMounted(async () => {
       form.modelName = agent.modelName
       form.temperature = agent.temperature ?? 0.7
       form.maxTokens = agent.maxTokens ?? 2048
+      // 加载工具绑定
+      await loadToolsBinding()
     } catch (e: any) {
       ElMessage.error(e.message || '获取 Agent 信息失败')
       router.push('/agents')
@@ -66,8 +102,13 @@ async function handleSave() {
 
   loading.value = true
   try {
+    const id = Number(route.params.id)
     if (isEdit.value) {
-      await updateAgentApi(Number(route.params.id), form)
+      await updateAgentApi(id, form)
+      // 提交工具绑定
+      if (mcpTools.value.length > 0) {
+        await bindToolsApi(id, { toolIds: boundToolIds.value })
+      }
       ElMessage.success('Agent 更新成功')
     } else {
       await createAgentApi(form)
@@ -158,6 +199,45 @@ async function handleSave() {
           />
         </el-form-item>
 
+        <!-- 工具绑定（仅编辑模式） -->
+        <template v-if="isEdit">
+          <el-divider />
+          <el-form-item label="绑定工具" prop="tools">
+            <div class="tool-binding-area">
+              <div v-if="loadingTools" class="tool-loading">
+                <el-spinner /> 加载工具列表中...
+              </div>
+              <div v-else-if="mcpTools.length === 0" class="tool-empty">
+                <span>暂无 MCP 工具可用，请先在</span>
+                <router-link to="/tools" class="tool-link">工具中心</router-link>
+                <span>注册 MCP 服务并同步工具。</span>
+              </div>
+              <el-select
+                v-else
+                v-model="boundToolIds"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                placeholder="选择要绑定的 MCP 工具"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="tool in mcpTools"
+                  :key="tool.id"
+                  :label="tool.name"
+                  :value="tool.id"
+                >
+                  <span>{{ tool.name }}</span>
+                  <span class="tool-option-desc">{{ tool.description }}</span>
+                </el-option>
+              </el-select>
+              <div class="form-tip">
+                为 Agent 绑定 MCP 工具后，Agent 可在对话中自主调用这些工具。内置工具默认对所有 Agent 可用。
+              </div>
+            </div>
+          </el-form-item>
+        </template>
+
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="handleSave">
             {{ loading ? '保存中...' : '保 存' }}
@@ -171,16 +251,64 @@ async function handleSave() {
 
 <style scoped>
 .page-header {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .page-header h2 {
   margin: 0;
-  font-size: 20px;
-  color: #303133;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1d2129;
 }
 .form-tip {
   font-size: 12px;
-  color: #909399;
+  color: #86909c;
   margin-left: 12px;
+}
+.tool-binding-area {
+  width: 100%;
+}
+.tool-loading {
+  color: #86909c;
+  font-size: 14px;
+}
+.tool-empty {
+  color: #86909c;
+  font-size: 14px;
+  padding: 8px 0;
+}
+.tool-empty .tool-link {
+  color: #409eff;
+  margin: 0 4px;
+}
+.tool-option-desc {
+  float: right;
+  color: #909399;
+  font-size: 12px;
+  margin-left: 12px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 表单 divider 样式增强 */
+:deep(.el-divider__text) {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d2129;
+  background: #fff;
+  padding: 0 16px;
+}
+
+/* 表单卡片内间距优化 */
+:deep(.el-card__body) {
+  padding: 28px;
+}
+:deep(.el-form-item) {
+  margin-bottom: 22px;
+}
+:deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #4e5969;
 }
 </style>

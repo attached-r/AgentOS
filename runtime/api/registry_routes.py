@@ -2,13 +2,14 @@
 Agent 注册管理端点。
 
 后端通过以下接口管理运行时的 Agent 配置：
-  GET  /runtime/agents       — 查看所有已注册 Agent（调试/监控用）
-  POST /runtime/agents/sync  — 全量同步 Agent 配置（后端启动 / CRUD 后调用）
+  GET  /runtime/agents              — 查看所有已注册 Agent（调试/监控用）
+  POST /runtime/agents/sync         — 全量同步（仅启动时调用）
+  POST /runtime/agents/upsert       — 增量新增/更新单个 Agent
+  DELETE /runtime/agents/{agent_id} — 增量删除单个 Agent
 
-V1 简化方案：
-  - 后端启动时一次性推送
-  - Agent CRUD 后增量推送（可选）
-  - V2 改为消息队列实时同步
+V2 优化：
+  - 启动时全量同步保证一致性
+  - CRUD 操作改为增量 upsert/delete，避免每次全量推送
 """
 from fastapi import APIRouter
 
@@ -19,24 +20,38 @@ router = APIRouter()
 
 @router.get("/")
 async def list_agents():
-    """
-    列出所有已注册的 Agent 配置。
-
-    用于调试和监控，返回注册表中所有 Agent 的完整配置列表。
-    """
+    """列出所有已注册的 Agent 配置。"""
     return agent_registry.list_all_dicts()
 
 
 @router.post("/sync")
 async def sync_agents(agents: list[AgentConfig]):
     """
-    全量同步 Agent 配置。
+    全量同步 Agent 配置（仅启动时调用）。
 
-    由 Spring Boot 后端在以下时机调用：
-      1. 应用启动完成后（ApplicationReadyEvent）
-      2. Agent 创建 / 更新 / 删除后
-
-    替换整个注册表内容，保证运行时与后端状态一致。
+    由后端 ApplicationReadyEvent 触发，保证运行时与数据库一致。
     """
     agent_registry.sync_all(agents)
     return {"status": "ok", "count": agent_registry.count()}
+
+
+@router.post("/upsert")
+async def upsert_agent(agent: AgentConfig):
+    """
+    增量新增或更新单个 Agent 配置。
+
+    由后端在 Agent 创建/更新时调用，避免全量推送。
+    """
+    agent_registry.add_or_update(agent)
+    return {"status": "ok"}
+
+
+@router.delete("/{agent_id}")
+async def remove_agent(agent_id: int):
+    """
+    增量删除单个 Agent 配置。
+
+    由后端在 Agent 删除时调用。
+    """
+    removed = agent_registry.remove(agent_id)
+    return {"status": "ok", "removed": removed}

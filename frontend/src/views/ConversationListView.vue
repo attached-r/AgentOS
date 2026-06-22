@@ -187,16 +187,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .page-header h2 {
   margin: 0;
-  font-size: 20px;
-  color: #303133;
-}
-.pagination-wrap {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1d2129;
 }
 </style>

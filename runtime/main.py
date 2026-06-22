@@ -1,10 +1,13 @@
 """
 AgentOS Runtime —— FastAPI 入口。
 
-V1 架构分层（从底到顶）：
+V2 架构分层（从底到顶）：
   core/        — 基础组件：LLM 客户端、Message 模型、Agent 基类
-  agents/      — Agent 实现：SimpleAgent、AgentRegistry
-  api/         — 路由层：invoke、registry、health
+  tools/       — 【V2】工具系统：Tool 基类、ToolRegistry、MCP 客户端、内置工具
+  agents/      — Agent 实现：SimpleAgent、ReActAgent、AgentRegistry
+  memory/      — 【V2】记忆系统：MemoryManager、工作记忆、情景记忆
+  rag/         — 【V2】RAG 管线：文档检索 + 生成增强
+  api/         — 路由层：invoke、registry、health、mcp、memory
   middlewares/ — 中间件：请求日志
   errors/      — 异常处理：统一错误响应
 
@@ -15,6 +18,8 @@ V1 架构分层（从底到顶）：
     或通过 main.py 直接启动：
     python main.py
 """
+from contextlib import asynccontextmanager
+
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -23,6 +28,7 @@ from fastapi.exceptions import HTTPException, RequestValidationError
 # 加载 .env 文件（必须放在其他 import 之前）
 load_dotenv()
 
+# ── V1 模块 ─────────────────────────────────────────────────────
 from api.health import router as health_router
 from api.registry_routes import router as registry_router
 from api.invoke_routes import router as invoke_router
@@ -34,6 +40,36 @@ from errors.handler import (
     general_exception_handler,
 )
 
+# ── V2 模块 ─────────────────────────────────────────────────────
+from api.mcp_routes import router as mcp_router
+from api.memory_routes import router as memory_router
+
+
+# ---------------------------------------------------------------------------
+# 应用生命周期
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    应用生命周期管理。
+
+    startup：
+      1. 注册内置工具（Calculator、Search 等）到全局 ToolRegistry
+    shutdown：
+      （预留）清理 MCP 连接、持久化未保存的记忆等
+    """
+    # ── startup ──────────────────────────────────────────────────
+    from tools.registry import tool_registry
+
+    tool_registry.register_builtins()
+
+    yield
+
+    # ── shutdown（预留）──────────────────────────────────────────
+    pass
+
+
 # ---------------------------------------------------------------------------
 # 创建 FastAPI 应用
 # ---------------------------------------------------------------------------
@@ -42,9 +78,11 @@ config = get_config()
 
 app = FastAPI(
     title=config.runtime_title,
-    version="1.0.0",
-    description="AgentOS 智能体运行时 — Python 执行环境",
+    version="2.0.0",  # V2 版本更新
+    description="AgentOS 智能体运行时 — Python 执行环境（V2：工具调用 + 记忆 + RAG）",
+    lifespan=lifespan,
 )
+
 
 # ---------------------------------------------------------------------------
 # 注册中间件（顺序重要：先注册的在外层）
@@ -74,11 +112,25 @@ app.include_router(
     tags=["registry"],
 )
 
-# Agent 调用：POST /runtime/agents/{id}/invoke
+# Agent 调用：POST /runtime/agents/{id}/invoke（V2 增强：支持 tools）
 app.include_router(
     invoke_router,
     prefix="/runtime/agents",
     tags=["invoke"],
+)
+
+# MCP 同步：POST /runtime/mcp/sync（V2 新增）
+app.include_router(
+    mcp_router,
+    prefix="/runtime",
+    tags=["mcp"],
+)
+
+# 记忆查询：GET /runtime/agents/{id}/memories, POST /runtime/memory/save（V2 新增）
+app.include_router(
+    memory_router,
+    prefix="/runtime",
+    tags=["memory"],
 )
 
 # ---------------------------------------------------------------------------

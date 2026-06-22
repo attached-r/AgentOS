@@ -9,3 +9,13 @@ openai>=1.12.0
 
 # === 数据校验（FastAPI 自带 pydantic，显式声明版本） ===
 pydantic>=2.5.0
+
+# === 异步 HTTP（MCP SSE 传输 + 后端 API 回调） ===
+httpx>=0.27.0
+
+# === MCP 协议客户端（V2 工具系统） ===
+fastmcp>=2.0.1
+
+# === 向量嵌入 / 向量数据库（V3 启用，V2 仅占位） ===
+# fastembed>=0.3.0
+# qdrant-client>=1.9.0
