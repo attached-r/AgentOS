@@ -57,6 +57,7 @@ class EpisodicMemory(BaseMemory):
         保存情景记忆到后端数据库。
 
         通过 POST /api/agents/{agent_id}/memories 回调后端。
+        V2 修复：原此端点后端未实现（404），已补全。
 
         Args:
             item: 要保存的记忆项
@@ -66,45 +67,60 @@ class EpisodicMemory(BaseMemory):
         """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
+                # V2 修复：后端 MemoryCenterController.saveMemory() 接收
+                # { agent_id, user_id, memory_type, content, importance, metadata }
+                payload = item.model_dump(exclude_none=True)
+                # 确保 agent_id 在 body 中（后端路径中的 {id} 用于路由匹配）
+                payload["agent_id"] = item.agent_id
+
                 resp = await client.post(
                     f"{self.backend_url}/api/agents/{item.agent_id}/memories",
-                    json=item.model_dump(exclude_none=True),
+                    json=payload,
                 )
 
                 if resp.status_code == 200:
                     data = resp.json()
-                    return data.get("id", 0)
+                    # 后端 R<T> 包装格式：{ code: 200, msg: "success", data: { id: 123, ... } }
+                    inner = data.get("data", data)
+                    return inner.get("id", 0)
 
                 return 0
 
         except httpx.RequestError:
             return 0
 
-    async def search(self, query: str, limit: int = 5) -> List[MemoryItem]:
+    async def search(self, query: str, limit: int = 5, agent_id: int = 0) -> List[MemoryItem]:
         """
         从后端检索情景记忆。
 
-        通过 GET /api/agents/.../memories 回调后端。
-        V2 后端使用 PostgreSQL ILIKE 关键词匹配。
+        通过 GET /api/agents/{agent_id}/memories?q=xxx 回调后端。
+        V2 后端使用 PostgreSQL ILIKE 关键词匹配，V3 升级 Qdrant 向量检索。
 
         Args:
-            query: 搜索关键词
-            limit: 返回条数上限
+            query:    搜索关键词
+            limit:    返回条数上限
+            agent_id: Agent ID（可选，用于限定搜索范围）
 
         Returns:
             匹配的记忆项列表
         """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
+                # V2 修复：原 agent_id 硬编码为 0 且参数名不匹配（缺 q）
+                # 后端 MemoryCenterController.listMemories() 已新增 q 参数支持
                 resp = await client.get(
-                    f"{self.backend_url}/api/agents/0/memories",
+                    f"{self.backend_url}/api/agents/{agent_id}/memories",
                     params={"q": query, "size": limit},
                 )
 
                 if resp.status_code == 200:
                     data = resp.json()
-                    records = data.get("records", data) if isinstance(data, dict) else data
-                    return [MemoryItem(**item) for item in records]
+                    # 后端 R<T> 包装：{ code: 200, data: { records: [...] } }
+                    inner = data.get("data", data) if isinstance(data, dict) else data
+                    records = inner.get("records", inner) if isinstance(inner, dict) else inner
+                    if isinstance(records, list):
+                        return [MemoryItem(**item) for item in records]
+                    return []
 
                 return []
 

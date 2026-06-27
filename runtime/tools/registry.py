@@ -19,6 +19,7 @@ V2 设计要点：
 from typing import Any, Dict, List, Optional
 
 from tools.base import Tool
+from tools.mcp_client import MCPToolClient
 
 
 # ---------------------------------------------------------------------------
@@ -58,12 +59,28 @@ class ToolRegistry:
         当前注册：
           - CalculatorTool：数学计算
           - SearchTool：网页搜索
+          - MemoryTool：记忆管理（V2 新增）
+          - RAGTool：知识库检索（V2 新增）
+
+        内置工具对所有 Agent 默认可用，无需在 agent_tool 表中绑定。
+        MemoryTool 和 RAGTool 的依赖（MemoryManager / RAGPipeline）
+        在注册时注入全局单例，确保工作记忆跨轮次可用。
         """
         from tools.builtin.calculator import CalculatorTool
         from tools.builtin.search import SearchTool
+        from tools.builtin.memory_tool import MemoryTool
+        from tools.builtin.rag_tool import RAGTool
+        from memory.manager import MemoryManager
+        from rag.pipeline import RAGPipeline
+        from config import get_config
 
         self.register_tool(CalculatorTool())
         self.register_tool(SearchTool())
+
+        # V2 新增：记忆工具 + 知识库检索工具
+        backend_url = get_config().backend_base_url
+        self.register_tool(MemoryTool(memory=MemoryManager(backend_url=backend_url)))
+        self.register_tool(RAGTool(rag=RAGPipeline(backend_url=backend_url)))
 
     # ── 注册（MCP 工具） ──────────────────────────────────────────────
 
@@ -138,6 +155,22 @@ class ToolRegistry:
             schemas.extend(client.get_openai_schemas())
 
         return schemas
+
+    def get_builtin_schemas(self) -> List[Dict[str, Any]]:
+        """
+        返回所有内置工具的 OpenAI function calling schema 列表。
+
+        与 get_openai_schemas() 的区别：
+          - get_openai_schemas() 包含内置工具 + MCP 工具
+          - get_builtin_schemas() 只返回通过 register_tool() 注册的内置工具
+
+        用于 invoke_routes 中将内置工具 schemas 合并到 req.tools，
+        确保 LLM 感知到 memory、rag、calculator、search 等工具。
+
+        Returns:
+            内置工具的 OpenAI function calling schema 列表
+        """
+        return [tool.to_openai_schema() for tool in self._tools.values()]
 
     # ── 查询 ──────────────────────────────────────────────────────────
 
