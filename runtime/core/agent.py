@@ -13,6 +13,8 @@ V2 子类：ReActAgent（多轮推理 + 工具调用）、ReflectionAgent 等
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
+from tools.registry import ToolRegistry
+
 from .message import Message
 from .llm import LLMClient
 

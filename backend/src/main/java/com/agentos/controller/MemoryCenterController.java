@@ -1,6 +1,7 @@
 package com.agentos.controller;
 
 import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.stp.StpUtil;
 import com.agentos.common.R;
 import com.agentos.model.dto.CreateKnowledgeDocReq;
 import com.agentos.model.entity.AgentMemory;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 记忆中心控制器
@@ -119,22 +121,64 @@ public class MemoryCenterController {
     // ==================== Agent 长期记忆 ====================
 
     /**
-     * 查询 Agent 的长期记忆列表
+     * 保存长期记忆（由 Runtime 的 EpisodicMemory.add() 通过 httpx 调用）
      * <p>
-     * 记忆由 Python Runtime 在对话过程中自动提取，此处仅提供查看能力。
-     * 返回结果已按当前登录用户过滤。
+     * V2 修复：原缺失此端点导致 Runtime 调 POST /api/agents/{id}/memories 时 404。
+     * MemoryManager 在 Agent 对话过程中自动提取重要信息并持久化到此端点。
      * </p>
      *
      * @param id   Agent ID
-     * @param page 页码
-     * @param size 每页大小
+     * @param body 请求体（agent_id / user_id / memory_type / content / importance / metadata）
+     * @return 保存后的记忆记录
+     */
+    @PostMapping("/agents/{id}/memories")
+    @SaCheckLogin
+    public R<AgentMemory> saveMemory(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        AgentMemory memory = new AgentMemory();
+        memory.setAgentId(id);
+        // user_id 优先取请求体中的，否则用当前登录用户的
+        Object bodyUserId = body.get("user_id");
+        memory.setUserId(bodyUserId instanceof Number n ? n.longValue() : StpUtil.getLoginIdAsLong());
+        memory.setMemoryType((String) body.getOrDefault("memory_type", "episodic"));
+        memory.setContent((String) body.get("content"));
+        // importance 兼容 float / double / int 类型转换
+        Object imp = body.get("importance");
+        memory.setImportance(imp instanceof Number n ? n.doubleValue() : 0.5);
+        // metadata 原样存 JSONB（可能为 null）
+        memory.setMetadata(body.get("metadata") != null ? body.get("metadata").toString() : null);
+        return R.ok(agentMemoryService.save(memory));
+    }
+
+    /**
+     * 分页查询 Agent 的长期记忆列表
+     * <p>
+     * V2 修复：新增 q 参数支持关键词搜索（Runtime EpisodicMemory.search() 需要通过
+     * query string 传搜索词而非查询参数）。前端管理页面也通过此端点分页浏览记忆。
+     * </p>
+     *
+     * @param id   Agent ID
+     * @param page 页码（默认 1）
+     * @param size 每页大小（默认 10）
+     * @param q    搜索关键词（可选，V2 ILIKE，V3 升级向量检索）
      * @return 记忆分页数据
      */
     @GetMapping("/agents/{id}/memories")
     @SaCheckLogin
     public R<Page<AgentMemory>> listMemories(@PathVariable Long id,
                                               @RequestParam(defaultValue = "1") int page,
-                                              @RequestParam(defaultValue = "10") int size) {
+                                              @RequestParam(defaultValue = "10") int size,
+                                              @RequestParam(required = false) String q) {
+        // V2 修复：原参数名 q 未绑定导致 EpisodicMemory.search() 回调时关键词丢失
+        // Runtime 调用格式：GET /api/agents/{agent_id}/memories?q=keyword&size=limit
+        // 有 q 参数时走 ILIKE 搜索，无 q 时走普通分页查询
+        if (q != null && !q.isEmpty()) {
+            // V2：ILIKE 关键词搜索 → V3 替换为 Qdrant.search()
+            List<AgentMemory> list = agentMemoryService.searchByAgent(id, q, size);
+            // 包装成分页格式以兼容 Runtime 期望的 { records: [...] } 结构
+            Page<AgentMemory> pageData = new Page<>(1, size, list.size());
+            pageData.setRecords(list);
+            return R.ok(pageData);
+        }
         return R.ok(agentMemoryService.pageByAgent(id, page, size));
     }
 

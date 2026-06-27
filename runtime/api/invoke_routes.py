@@ -126,16 +126,21 @@ async def invoke_agent(agent_id: int, req: InvokeRequest):
     # V2 修复：记忆系统之前已经实现了存储和检索，但未接入 Agent 调用链路
     system_prompt = config.get("system_prompt") or ""
     memory_context = ""
+    rag_context = ""  # V2 修复：RAG 知识库检索上下文
+
+    # 提取最后一条用户消息内容，用于记忆检索和 RAG 检索
+    last_user_msg = ""
+    for msg in reversed(req.messages):
+        if msg.get("role") == "user":
+            last_user_msg = msg.get("content", "")
+            break
+
+    # ── 记忆检索 ──────────────────────────────────────────────
     try:
         from memory.manager import MemoryManager
         mm = MemoryManager()
-        last_user_msg = ""
-        for msg in reversed(req.messages):
-            if msg.get("role") == "user":
-                last_user_msg = msg.get("content", "")
-                break
         if last_user_msg:
-            memories = await mm.search(last_user_msg, limit=5)
+            memories = await mm.search(last_user_msg, limit=5, agent_id=agent_id)
             if memories:
                 memory_lines = [f"- {m.content}" for m in memories]
                 memory_context = "\n\n【相关记忆】\n" + "\n".join(memory_lines)
@@ -144,16 +149,58 @@ async def invoke_agent(agent_id: int, req: InvokeRequest):
         # 记忆检索失败不阻断主流程
         pass
 
+    # ── V2 修复：RAG 知识库检索注入 ──────────────────────────
+    # RAGPipeline 已实现但此前从未被接入 Agent 调用链路。
+    # 使用最后一条用户消息检索知识库文档，将匹配内容注入 system prompt。
+    # V3 升级：此处 RAGPipeline.retrieve() 将从 ILIKE 升级为 Qdrant 向量检索。
+    try:
+        from rag.pipeline import RAGPipeline
+        from config import get_config
+        pipeline = RAGPipeline(backend_url=get_config().backend_base_url)
+        chunks = await pipeline.retrieve(last_user_msg, agent_id=agent_id, top_k=3)
+        if chunks:
+            rag_context = pipeline.build_context(chunks)
+            system_prompt += "\n\n" + rag_context
+    except Exception:
+        # RAG 检索失败不阻断主流程（可能后端未启动或知识库为空）
+        pass
+
     # 5) 构造 LLM 客户端
     llm_client = LLMClient.from_agent_config(config)
+
+    # ── 工具 schema 合并 ─────────────────────────────────────────────
+    # V2 修复：内置工具（memory、knowledge_retrieval、calculator、web_search）
+    # 注册在全局 ToolRegistry 中，但其 schemas 需要显式传给 LLM 才能被调用。
+    # 后端下发的 req.tools 包含 MCP 工具（及已绑定 agent_tool 的内置工具），
+    # 此处将未重复的内置工具 schemas 合并进去，确保所有内置工具对 LLM 可见。
+    #
+    # 合并策略：
+    #   - 以 req.tools 为基（后端下发的工具，含 agent 绑定的 MCP 工具）
+    #   - 追加 ToolRegistry 中的内置工具 schemas（避免 function name 重复）
+    builtin_schemas = tool_registry.get_builtin_schemas()
+    existing_tool_names: set = set()
+    if req.tools:
+        for s in req.tools:
+            name = s.get("function", {}).get("name", "")
+            if name:
+                existing_tool_names.add(name)
+
+    merged_tools: List[Dict[str, Any]] = list(req.tools) if req.tools else []
+    for schema in builtin_schemas:
+        name = schema.get("function", {}).get("name", "")
+        if name and name not in existing_tool_names:
+            merged_tools.append(schema)
+            existing_tool_names.add(name)
 
     # 工具调用步骤收集器 —— 供 ReActAgent 回传步骤
     tool_steps: List[Dict[str, Any]] = []
 
     try:
-        if req.tools:
+        if merged_tools:
             # ── V2 路径：有工具 → 使用 ReActAgent ─────────────────
-            # 后端已传入完整消息列表（含 system + 历史 + 当前消息）和工具 schema
+            # TODO V2 修复：req.tools 可能为 None 或空列表，
+            # 但只要 builtin_schemas 非空（memory、rag 等），
+            # 就应该使用 ReActAgent，即使后端未下发 MCP 工具。
             agent = ReActAgent(
                 name=config.get("name", f"agent-{agent_id}"),
                 llm_client=llm_client,
@@ -165,7 +212,7 @@ async def invoke_agent(agent_id: int, req: InvokeRequest):
             result = await agent.run(
                 input_text="",
                 messages=req.messages,
-                tools=req.tools,
+                tools=merged_tools,
             )
         else:
             # ── V1 兼容路径：无工具 → 直接 LLM 调用 ───────────────

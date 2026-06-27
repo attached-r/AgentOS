@@ -112,6 +112,7 @@ class MemoryManager:
         query: str,
         memory_type: Optional[str] = None,
         limit: int = 5,
+        agent_id: int = 0,  # V2 修复：添加 agent_id 参数，传递给 EpisodicMemory.search()
     ) -> List[MemoryItem]:
         """
         跨记忆类型搜索。
@@ -120,6 +121,7 @@ class MemoryManager:
             query:       搜索关键词
             memory_type: 筛选记忆类型（None = 搜索全部）
             limit:       返回条数上限
+            agent_id:    Agent ID（搜索情景记忆时传参限定范围，V2 修复）
 
         Returns:
             合并后的记忆项列表（按重要性降序排列）
@@ -131,9 +133,9 @@ class MemoryManager:
             working_results = await self.working.search(query, limit)
             results.extend(working_results)
 
-        # 搜索情景记忆
+        # 搜索情景记忆（V2 修复：传入 agent_id，原硬编码为 0 导致跨用户数据泄漏风险）
         if memory_type in (None, "episodic"):
-            episodic_results = await self.episodic.search(query, limit)
+            episodic_results = await self.episodic.search(query, limit, agent_id=agent_id)
             results.extend(episodic_results)
 
         # 按重要性降序排列，取 top-k
