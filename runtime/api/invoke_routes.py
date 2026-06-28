@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 from agents.registry import agent_registry
 from agents.react_agent import ReActAgent
 from config import get_config
+from context.builder import ContextBuilder, ContextConfig
 from core.llm import LLMClient
 from tools.registry import tool_registry
 
@@ -122,47 +123,45 @@ async def invoke_agent(agent_id: int, req: InvokeRequest):
     if req.base_url:
         config["base_url"] = req.base_url
 
-    # 4) 记忆注入：用最后一条用户消息检索相关记忆，拼入 system prompt
-    # V2 修复：记忆系统之前已经实现了存储和检索，但未接入 Agent 调用链路
-    system_prompt = config.get("system_prompt") or ""
-    memory_context = ""
-    rag_context = ""  # V2 修复：RAG 知识库检索上下文
+    # 4) 构造 ContextBuilder（V2 重构：替代手动字符串拼接）
+    # ── 使用 ContextBuilder 统一管理记忆 + RAG 注入 ──────────────
+    # V2 重构：从手动字符串拼接改为 GSSC（Gather → Structure）模式。
+    # 好处：
+    #   - 统一入口：记忆/RAG 收集逻辑集中到 ContextBuilder
+    #   - 结构化输出：带标签的模板，LLM 能区分信息来源
+    #   - V1/V2 共用：两套路径都使用同一份 packets
+    base_system_prompt = config.get("system_prompt") or ""
+    context_builder = None
+    context_packets = None
 
-    # 提取最后一条用户消息内容，用于记忆检索和 RAG 检索
+    # 提取最后一条用户消息用于检索（在 try 外部，确保下游可用）
     last_user_msg = ""
     for msg in reversed(req.messages):
         if msg.get("role") == "user":
             last_user_msg = msg.get("content", "")
             break
 
-    # ── 记忆检索 ──────────────────────────────────────────────
     try:
         from memory.manager import MemoryManager
-        mm = MemoryManager()
-        if last_user_msg:
-            memories = await mm.search(last_user_msg, limit=5, agent_id=agent_id)
-            if memories:
-                memory_lines = [f"- {m.content}" for m in memories]
-                memory_context = "\n\n【相关记忆】\n" + "\n".join(memory_lines)
-                system_prompt += memory_context
-    except Exception:
-        # 记忆检索失败不阻断主流程
-        pass
-
-    # ── V2 修复：RAG 知识库检索注入 ──────────────────────────
-    # RAGPipeline 已实现但此前从未被接入 Agent 调用链路。
-    # 使用最后一条用户消息检索知识库文档，将匹配内容注入 system prompt。
-    # V3 升级：此处 RAGPipeline.retrieve() 将从 ILIKE 升级为 Qdrant 向量检索。
-    try:
         from rag.pipeline import RAGPipeline
-        from config import get_config
-        pipeline = RAGPipeline(backend_url=get_config().backend_base_url)
-        chunks = await pipeline.retrieve(last_user_msg, agent_id=agent_id, top_k=3)
-        if chunks:
-            rag_context = pipeline.build_context(chunks)
-            system_prompt += "\n\n" + rag_context
+
+        mm = MemoryManager()
+        rp = RAGPipeline(backend_url=get_config().backend_base_url)
+
+        context_builder = ContextBuilder(
+            config=ContextConfig(memory_limit=5, rag_top_k=3),
+            memory=mm,
+            rag=rp,
+        )
+
+        if last_user_msg:
+            context_packets = await context_builder.gather(
+                user_query=last_user_msg,
+                agent_id=agent_id,
+                system_prompt=base_system_prompt,
+            )
     except Exception:
-        # RAG 检索失败不阻断主流程（可能后端未启动或知识库为空）
+        # ContextBuilder/记忆/RAG 初始化失败不阻断主流程
         pass
 
     # 5) 构造 LLM 客户端
@@ -197,25 +196,30 @@ async def invoke_agent(agent_id: int, req: InvokeRequest):
 
     try:
         if merged_tools:
-            # ── V2 路径：有工具 → 使用 ReActAgent ─────────────────
-            # TODO V2 修复：req.tools 可能为 None 或空列表，
-            # 但只要 builtin_schemas 非空（memory、rag 等），
-            # 就应该使用 ReActAgent，即使后端未下发 MCP 工具。
+            # ── V2 路径：有工具 → 使用 ReActAgent（含 ContextBuilder）──
             agent = ReActAgent(
                 name=config.get("name", f"agent-{agent_id}"),
                 llm_client=llm_client,
-                system_prompt=system_prompt,
+                system_prompt=base_system_prompt,       # 基础 system prompt（不含记忆/RAG）
                 tool_registry=tool_registry,
                 max_steps=get_config().react_max_steps,
-                tool_steps_collector=tool_steps,  # V2 修复：传入收集器引用
+                tool_steps_collector=tool_steps,
+                context_builder=context_builder,         # V2 新增：上下文构建器
             )
             result = await agent.run(
                 input_text="",
                 messages=req.messages,
                 tools=merged_tools,
+                context_packets=context_packets,         # V2 新增：预收集的上下文包
+                user_query=last_user_msg,                # V2 新增：当前用户问题
             )
         else:
             # ── V1 兼容路径：无工具 → 直接 LLM 调用 ───────────────
+            # 使用 ContextBuilder 结构化 system prompt（如有）
+            if context_builder and context_packets:
+                system_prompt = context_builder.structure(context_packets)
+            else:
+                system_prompt = base_system_prompt
             result = await llm_client.invoke(
                 messages=req.messages,
                 system_prompt=system_prompt,

@@ -84,7 +84,7 @@ onMounted(() => {
       <el-table :data="memories" v-loading="loading" stripe style="width: 100%">
         <el-table-column label="记忆类型" width="120">
           <template #default="{ row }">
-            <el-tag :type="memoryTypeMap[row.memoryType]?.type || 'info'" size="small">
+            <el-tag :type="memoryTypeMap[row.memoryType]?.type || 'info'" size="small" effect="plain">
               {{ memoryTypeMap[row.memoryType]?.label || row.memoryType }}
             </el-tag>
           </template>
@@ -138,7 +138,7 @@ onMounted(() => {
   margin: 8px 0 0;
   font-size: 22px;
   font-weight: 700;
-  color: #1d2129;
+  color: var(--text-primary);
 }
 .empty-state {
   padding: 40px 0;

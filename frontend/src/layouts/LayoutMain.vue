@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   Odometer,
@@ -10,11 +10,16 @@ import {
   ChatDotSquare,
   Key,
   SwitchButton,
+  Search,
+  Expand,
+  Fold,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+const sidebarCollapsed = ref(false)
 
 const activeMenu = computed(() => route.path)
 
@@ -26,192 +31,336 @@ function handleLogout() {
 const displayName = computed(() => {
   return authStore.user?.displayName || authStore.user?.username || 'User'
 })
+
+const navItems = [
+  { path: '/dashboard', icon: Odometer, label: '仪表盘' },
+  { path: '/agents', icon: Monitor, label: 'Agent 管理' },
+  { path: '/tools', icon: Tools, label: '工具中心' },
+  { path: '/knowledge', icon: Document, label: '知识库' },
+  { path: '/conversations', icon: ChatDotSquare, label: '对话列表' },
+  { path: '/api-keys', icon: Key, label: 'API Key' },
+]
 </script>
 
 <template>
-  <el-container style="height: 100vh">
-    <el-aside width="220px" class="app-sidebar">
+  <div class="app-shell">
+    <!-- ========== 侧栏 ========== -->
+    <aside class="app-sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <!-- Logo -->
       <div class="sidebar-logo">
-        <span class="logo-text">Agent<span class="logo-accent">OS</span></span>
+        <span class="logo-icon">A</span>
+        <span v-show="!sidebarCollapsed" class="logo-text">
+          Agent<span class="logo-accent">OS</span>
+        </span>
       </div>
-      <div class="sidebar-menu-wrap">
-        <el-menu
-          :default-active="activeMenu"
-          :router="true"
+
+      <!-- 搜索（豆包风格快捷入口） -->
+      <div v-show="!sidebarCollapsed" class="sidebar-search">
+        <el-icon><Search /></el-icon>
+        <span class="search-placeholder">快速搜索...</span>
+      </div>
+
+      <!-- 导航 -->
+      <nav class="sidebar-nav">
+        <router-link
+          v-for="item in navItems"
+          :key="item.path"
+          :to="item.path"
+          class="nav-item"
+          :class="{ active: activeMenu.startsWith(item.path) }"
         >
-          <el-menu-item index="/dashboard">
-            <el-icon><Odometer /></el-icon>
-            <span>仪表盘</span>
-          </el-menu-item>
-          <el-menu-item index="/agents">
-            <el-icon><Monitor /></el-icon>
-            <span>Agent 管理</span>
-          </el-menu-item>
-          <el-menu-item index="/tools">
-            <el-icon><Tools /></el-icon>
-            <span>工具中心</span>
-          </el-menu-item>
-          <el-menu-item index="/knowledge">
-            <el-icon><Document /></el-icon>
-            <span>知识库</span>
-          </el-menu-item>
-          <el-menu-item index="/conversations">
-            <el-icon><ChatDotSquare /></el-icon>
-            <span>对话列表</span>
-          </el-menu-item>
-          <el-menu-item index="/api-keys">
-            <el-icon><Key /></el-icon>
-            <span>API Key</span>
-          </el-menu-item>
-        </el-menu>
-      </div>
+          <el-icon :size="18"><component :is="item.icon" /></el-icon>
+          <span v-show="!sidebarCollapsed" class="nav-label">{{ item.label }}</span>
+        </router-link>
+      </nav>
+
+      <!-- 底部用户 -->
       <div class="sidebar-footer">
-        <div class="sidebar-user-avatar">{{ displayName.charAt(0).toUpperCase() }}</div>
-        <span class="sidebar-user-name">{{ displayName }}</span>
+        <div class="sidebar-user">
+          <div class="user-avatar">{{ displayName.charAt(0).toUpperCase() }}</div>
+          <div v-show="!sidebarCollapsed" class="user-info">
+            <span class="user-name">{{ displayName }}</span>
+          </div>
+          <el-tooltip content="退出登录" placement="right">
+            <el-button text class="logout-btn" @click="handleLogout">
+              <el-icon><SwitchButton /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
       </div>
-    </el-aside>
-    <el-container>
-      <el-header class="app-header">
+
+      <!-- 折叠按钮 -->
+      <button class="collapse-btn" @click="sidebarCollapsed = !sidebarCollapsed">
+        <el-icon><Fold v-if="!sidebarCollapsed" /><Expand v-else /></el-icon>
+      </button>
+    </aside>
+
+    <!-- ========== 主区域 ========== -->
+    <div class="app-main-area" :class="{ sidebarCollapsed }">
+      <!-- 极简顶栏 -->
+      <header class="app-header">
         <div class="header-left">
-          <span class="page-title">{{ route.meta?.title || '' }}</span>
+          <h1 class="page-title">{{ route.meta?.title || '' }}</h1>
         </div>
         <div class="header-right">
-          <span class="user-name">{{ displayName }}</span>
-          <el-button text type="primary" @click="handleLogout">
-            <el-icon><SwitchButton /></el-icon>
-            退出
-          </el-button>
+          <span class="header-date">{{ new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) }}</span>
         </div>
-      </el-header>
-      <el-main class="app-main">
+      </header>
+
+      <!-- 内容 -->
+      <main class="app-content">
         <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+      </main>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-/* === 侧栏 — Linear/Notion 混合风格 === */
+/* ============================================================
+   App Shell — Doubao 风格
+   ============================================================ */
+.app-shell {
+  display: flex;
+  height: 100vh;
+  background: var(--bg-secondary);
+}
+
+/* ============================
+   侧栏
+   ============================ */
 .app-sidebar {
-  background: #0f1419;
+  width: 220px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+  transition: width var(--transition-normal);
+  z-index: 10;
 }
+.app-sidebar.collapsed {
+  width: 64px;
+}
+
+/* Logo */
 .sidebar-logo {
   height: 56px;
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 0 16px;
+  gap: 10px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
   flex-shrink: 0;
 }
 .logo-text {
-  color: #fff;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 .logo-accent {
-  color: #409eff;
+  color: var(--accent);
 }
 
-/* 菜单 */
-.sidebar-menu-wrap {
+/* 搜索快捷入口 */
+.sidebar-search {
+  margin: 12px 12px 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+.sidebar-search:hover {
+  background: var(--bg-tertiary);
+}
+.search-placeholder {
+  white-space: nowrap;
+}
+
+/* 导航 */
+.sidebar-nav {
   flex: 1;
-  padding: 8px 0;
+  padding: 6px 8px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-:deep(.el-menu) {
-  background: transparent !important;
-  border-right: none;
-}
-:deep(.el-menu-item) {
-  margin: 2px 10px;
-  border-radius: 6px;
-  height: 38px;
-  line-height: 38px;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 14px;
-  transition: all 0.12s ease;
-  width: auto;
-  padding: 0 12px;
-}
-:deep(.el-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.85);
-}
-:deep(.el-menu-item.is-active) {
-  background: rgba(64, 158, 255, 0.1);
-  color: #409eff;
-  font-weight: 500;
-}
-:deep(.el-menu-item .el-icon) {
-  margin-right: 8px;
-  font-size: 17px;
-  color: inherit;
-}
-
-/* 底部用户栏 */
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+.nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 450;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav-item:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.nav-item .el-icon {
   flex-shrink: 0;
 }
-.sidebar-user-avatar {
+
+/* 底部用户 */
+.sidebar-footer {
+  padding: 10px 8px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+.sidebar-user:hover {
+  background: var(--bg-secondary);
+}
+.user-avatar {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #409eff, #3a8ee6);
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   flex-shrink: 0;
 }
-.sidebar-user-name {
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+.user-name {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: block;
+}
+.logout-btn {
+  color: var(--text-tertiary);
+  padding: 4px;
+  flex-shrink: 0;
+}
+.logout-btn:hover {
+  color: var(--color-danger);
 }
 
-/* === 顶栏 === */
+/* 折叠按钮 */
+.collapse-btn {
+  position: absolute;
+  right: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+  z-index: 5;
+}
+.collapse-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-md);
+}
+
+/* ============================
+   主区域
+   ============================ */
+.app-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: margin-left var(--transition-normal);
+}
+
+/* 顶栏 */
 .app-header {
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid var(--color-border);
-  padding: 0 24px;
-  height: 56px;
+  padding: 0 28px;
+  background: transparent;
   flex-shrink: 0;
 }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 .page-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--text-primary);
+  margin: 0;
 }
 .header-right {
   display: flex;
   align-items: center;
   gap: 16px;
 }
-.user-name {
+.header-date {
   font-size: 13px;
-  color: var(--color-text-muted);
+  color: var(--text-tertiary);
+  font-weight: 400;
 }
 
-/* === 内容区 === */
-.app-main {
-  background-color: var(--color-bg);
-  padding: 24px;
+/* 内容区 */
+.app-content {
+  flex: 1;
+  padding: 0 28px 28px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 </style>

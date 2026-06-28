@@ -40,6 +40,16 @@ class RuntimeConfig:
     # ── ReAct Agent ──────────────────────────────────────────
     react_max_steps: int = 10
 
+    # ── Redis 工作记忆 ──────────────────────────────────────────
+    # WorkingMemory 用 Redis 替代内存 List（V2.1 升级）
+    # 从 .env 统一加载，不硬编码
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: str = ""
+    redis_wm_db: int = 1                     # 工作记忆独立 db，与后端 Redis 隔离
+    redis_wm_ttl: int = 3600                 # 工作记忆 TTL（秒），默认 1 小时
+    redis_wm_capacity: int = 100             # 单个 Agent 工作记忆容量上限
+
     # ── MCP 超时（秒）─────────────────────────────────────────
     mcp_connection_timeout: int = 30
     mcp_read_timeout: int = 60
@@ -63,6 +73,12 @@ class RuntimeConfig:
             default_max_tokens=int(os.getenv("DEFAULT_MAX_TOKENS", "4096")),
             backend_base_url=os.getenv("BACKEND_BASE_URL", "http://localhost:8080"),
             react_max_steps=int(os.getenv("REACT_MAX_STEPS", "10")),
+            redis_host=os.getenv("REDIS_HOST", "localhost"),
+            redis_port=int(os.getenv("REDIS_PORT", "6379")),
+            redis_password=os.getenv("REDIS_PASSWORD", ""),
+            redis_wm_db=int(os.getenv("REDIS_WM_DB", "1")),
+            redis_wm_ttl=int(os.getenv("REDIS_WM_TTL", "3600")),
+            redis_wm_capacity=int(os.getenv("REDIS_WM_CAPACITY", "100")),
             mcp_connection_timeout=int(os.getenv("MCP_CONNECTION_TIMEOUT", "30")),
             mcp_read_timeout=int(os.getenv("MCP_READ_TIMEOUT", "60")),
         )

@@ -173,14 +173,14 @@ onMounted(() => {
         </el-table-column>
         <el-table-column label="来源" width="100">
           <template #default="{ row }">
-            <el-tag size="small">
+            <el-tag size="small" effect="plain">
               {{ row.source === 'manual' ? '手动录入' : row.source === 'upload' ? '上传' : '网页' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="向量状态" width="110">
           <template #default="{ row }">
-            <el-tag :type="embeddingStatusMap[row.embeddingStatus]?.type || 'info'" size="small">
+            <el-tag :type="embeddingStatusMap[row.embeddingStatus]?.type || 'info'" size="small" effect="plain">
               {{ embeddingStatusMap[row.embeddingStatus]?.label || '未知' }}
             </el-tag>
           </template>
@@ -265,11 +265,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.card-header span {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1d2129;
 }
 .header-right {
   display: flex;

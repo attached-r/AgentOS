@@ -48,207 +48,370 @@ function goToConversation(id: number) {
 </script>
 
 <template>
-  <div>
-    <div class="welcome-section">
-      <h2>欢迎回来，{{ displayName }}！</h2>
-      <p class="welcome-desc">这是您的 AgentOS 控制台，在这里您可以管理 Agent 和对话。</p>
-    </div>
-
-    <div class="stats-row">
-      <div class="stat-card-wrapper">
-        <div class="stat-card stat-card-blue">
-          <div class="stat-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ agentCount !== null ? agentCount : 'N/A' }}</div>
-            <div class="stat-label">Agent 总数</div>
-          </div>
-          <div class="stat-action">
-            <el-button text type="primary" @click="router.push('/agents')">管理 →</el-button>
-          </div>
-        </div>
+  <div class="dashboard">
+    <!-- 欢迎区域 -->
+    <div class="welcome-card">
+      <div class="welcome-text">
+        <h2>👋 欢迎回来，{{ displayName }}</h2>
+        <p>这是您的 AgentOS 控制台，在这里可以管理 Agent 和对话。</p>
       </div>
-      <div class="stat-card-wrapper">
-        <div class="stat-card stat-card-green">
-          <div class="stat-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ conversationCount !== null ? conversationCount : 'N/A' }}</div>
-            <div class="stat-label">对话总数</div>
-          </div>
-          <div class="stat-action">
-            <el-button text type="primary" @click="router.push('/conversations')">查看 →</el-button>
-          </div>
-        </div>
-      </div>
-      <div class="stat-card-wrapper">
-        <div class="stat-card stat-card-orange">
-          <div class="stat-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ taskCount !== null ? taskCount : 'N/A' }}</div>
-            <div class="stat-label">任务日志</div>
-          </div>
-          <div class="stat-action">
-            <el-button text type="primary" disabled>详情 →</el-button>
-          </div>
-        </div>
+      <div class="welcome-actions">
+        <button class="action-btn primary" @click="router.push('/conversations')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          开始对话
+        </button>
+        <button class="action-btn" @click="router.push('/agents/new')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          创建 Agent
+        </button>
       </div>
     </div>
 
-    <el-card shadow="never" class="recent-card">
-      <template #header>
-        <div class="card-header">
-          <span>最近对话</span>
-          <el-button text type="primary" @click="router.push('/conversations')">查看全部</el-button>
+    <!-- 统计卡片 -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon-box agents">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
         </div>
-      </template>
-      <el-table
-        :data="recentConversations"
-        v-loading="loading"
-        stripe
-        empty-text="暂无对话记录"
-        @row-click="(row: Conversation) => goToConversation(row.id)"
-        style="cursor: pointer"
-      >
-        <el-table-column prop="title" label="标题" min-width="200">
-          <template #default="{ row }">
-            {{ row.title || `对话 ${row.id}` }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="agentId" label="Agent ID" width="100" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
-              {{ row.status === 'active' ? '进行中' : '已完成' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
-      </el-table>
-    </el-card>
+        <div class="stat-body">
+          <div class="stat-value">{{ agentCount !== null ? agentCount : '—' }}</div>
+          <div class="stat-label">Agent 总数</div>
+        </div>
+        <a class="stat-link" @click="router.push('/agents')">管理 →</a>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-box chats">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value">{{ conversationCount !== null ? conversationCount : '—' }}</div>
+          <div class="stat-label">对话总数</div>
+        </div>
+        <a class="stat-link" @click="router.push('/conversations')">查看 →</a>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-box tasks">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value">{{ taskCount !== null ? taskCount : '—' }}</div>
+          <div class="stat-label">任务日志</div>
+        </div>
+        <a class="stat-link disabled">详情 →</a>
+      </div>
+    </div>
+
+    <!-- 最近对话 -->
+    <div class="section-card">
+      <div class="section-header">
+        <h3>最近对话</h3>
+        <button class="section-more" @click="router.push('/conversations')">查看全部 →</button>
+      </div>
+      <div class="section-body">
+        <div v-if="loading" class="loading-placeholder">
+          <div class="placeholder-row" v-for="i in 3" :key="i"></div>
+        </div>
+        <table v-else-if="recentConversations.length > 0" class="simple-table">
+          <thead>
+            <tr>
+              <th>标题</th>
+              <th>Agent ID</th>
+              <th>状态</th>
+              <th>创建时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in recentConversations"
+              :key="row.id"
+              @click="goToConversation(row.id)"
+            >
+              <td class="cell-title">{{ row.title || `对话 ${row.id}` }}</td>
+              <td>{{ row.agentId }}</td>
+              <td>
+                <span class="status-tag" :class="row.status === 'active' ? 'success' : 'info'">
+                  {{ row.status === 'active' ? '进行中' : '已完成' }}
+                </span>
+              </td>
+              <td class="cell-date">{{ row.createdAt }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="empty-section">
+          <p>暂无对话记录</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.welcome-section {
-  margin-bottom: 24px;
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px 28px;
-  border: 1px solid var(--color-border);
-}
-.welcome-section h2 {
-  margin: 0 0 6px;
-  font-size: 22px;
-  color: var(--color-text-primary);
-  font-weight: 700;
-}
-.welcome-desc {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 14px;
+.dashboard {
+  max-width: 960px;
+  margin: 0 auto;
 }
 
-/* === 统计卡片 — Widget 风格 === */
-.stats-row {
+/* ============================
+   欢迎卡片
+   ============================ */
+.welcome-card {
+  background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.welcome-text h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.welcome-text p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.welcome-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.action-btn:hover {
+  border-color: var(--accent-light);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.action-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.action-btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+/* ============================
+   统计卡片
+   ============================ */
+.stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  gap: 16px;
   margin-bottom: 24px;
 }
-.stat-card-wrapper {
-  min-width: 0;
-}
+
 .stat-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px 24px;
-  border: 1px solid var(--color-border);
-  transition: all 0.2s ease;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
   position: relative;
   overflow: hidden;
 }
 .stat-card:hover {
-  border-color: transparent;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
-/* 卡片顶部彩色条 */
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-}
-.stat-card-blue::before { background: linear-gradient(90deg, #409eff, #79bbff); }
-.stat-card-green::before { background: linear-gradient(90deg, #67c23a, #95d475); }
-.stat-card-orange::before { background: linear-gradient(90deg, #e6a23c, #f4d19e); }
 
-.stat-icon {
+.stat-icon-box {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.stat-card-blue .stat-icon {
-  background: #ecf5ff;
-  color: #409eff;
+.stat-icon-box.agents {
+  background: #eef2ff;
+  color: #4f46e5;
 }
-.stat-card-green .stat-icon {
-  background: #f0f9eb;
-  color: #67c23a;
+.stat-icon-box.chats {
+  background: #ecfdf5;
+  color: #059669;
 }
-.stat-card-orange .stat-icon {
-  background: #fdf6ec;
-  color: #e6a23c;
+.stat-icon-box.tasks {
+  background: #fef3c7;
+  color: #d97706;
 }
 
-.stat-info {
+.stat-body {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
 }
 .stat-value {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -1px;
+  color: var(--text-primary);
 }
-.stat-card-blue .stat-value { color: #409eff; }
-.stat-card-green .stat-value { color: #67c23a; }
-.stat-card-orange .stat-value { color: #e6a23c; }
 .stat-label {
-  font-size: 14px;
-  color: var(--color-text-muted);
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-weight: 450;
 }
 
-/* 最近对话卡片 */
-.recent-card {
-  margin-top: 0;
+.stat-link {
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--transition-fast);
 }
-.card-header {
+.stat-link:hover {
+  color: var(--accent-hover);
+}
+.stat-link.disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ============================
+   最近对话卡片
+   ============================ */
+.section-card {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-:deep(.recent-card .el-card__header) {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--border-subtle);
 }
-:deep(.recent-card .el-card__header span) {
+.section-header h3 {
+  margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--text-primary);
+}
+.section-more {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+.section-more:hover {
+  color: var(--accent-hover);
+}
+
+.section-body {
+  padding: 0;
+}
+
+/* 简约表格 */
+.simple-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.simple-table th {
+  text-align: left;
+  padding: 10px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.simple-table td {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.simple-table tbody tr {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.simple-table tbody tr:hover {
+  background: var(--accent-soft);
+}
+.simple-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.cell-title {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.cell-date {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.status-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.status-tag.success {
+  background: #dcfce7;
+  color: #16a34a;
+}
+.status-tag.info {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Loading placeholder */
+.loading-placeholder {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.placeholder-row {
+  height: 20px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #f8f8f8 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.empty-section {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-tertiary);
 }
 </style>

@@ -104,7 +104,7 @@ onMounted(fetchKeys)
         </el-table-column>
         <el-table-column prop="isActive" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.isActive ? 'success' : 'info'" size="small">
+            <el-tag :type="row.isActive ? 'success' : 'info'" size="small" effect="plain">
               {{ row.isActive ? '启用' : '禁用' }}
             </el-tag>
           </template>
@@ -160,6 +160,6 @@ onMounted(fetchKeys)
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #1d2129;
+  color: var(--text-primary);
 }
 </style>
