@@ -40,20 +40,16 @@ const rules = {
 
 // ==================== 工具绑定 ====================
 
-const mcpTools = ref<Tool[]>([])           // 所有 MCP 工具
-const boundToolIds = ref<number[]>([])      // 已绑定的工具 ID 列表
+const mcpTools = ref<Tool[]>([])
+const boundToolIds = ref<number[]>([])
 const loadingTools = ref(false)
 
-// 只有在编辑模式下才加载工具绑定
 async function loadToolsBinding() {
   if (!isEdit.value) return
   loadingTools.value = true
   try {
-    // 加载所有 MCP 工具
     const toolsRes = await getToolsApi({ page: 1, size: 999, source: 'mcp' })
     mcpTools.value = toolsRes.data.data.records
-
-    // 加载当前已绑定的工具
     const boundRes = await getAgentToolsApi(Number(route.params.id))
     boundToolIds.value = boundRes.data.data.map(t => t.id)
   } catch (e: any) {
@@ -63,11 +59,8 @@ async function loadToolsBinding() {
   }
 }
 
-// 当切换到编辑模式时加载工具
 watch(isEdit, (val) => {
-  if (val) {
-    loadToolsBinding()
-  }
+  if (val) loadToolsBinding()
 })
 
 onMounted(async () => {
@@ -84,7 +77,6 @@ onMounted(async () => {
       form.modelName = agent.modelName
       form.temperature = agent.temperature ?? 0.7
       form.maxTokens = agent.maxTokens ?? 2048
-      // 加载工具绑定
       await loadToolsBinding()
     } catch (e: any) {
       ElMessage.error(e.message || '获取 Agent 信息失败')
@@ -105,7 +97,6 @@ async function handleSave() {
     const id = Number(route.params.id)
     if (isEdit.value) {
       await updateAgentApi(id, form)
-      // 提交工具绑定
       if (mcpTools.value.length > 0) {
         await bindToolsApi(id, { toolIds: boundToolIds.value })
       }
@@ -199,14 +190,11 @@ async function handleSave() {
           />
         </el-form-item>
 
-        <!-- 工具绑定（仅编辑模式） -->
         <template v-if="isEdit">
           <el-divider />
           <el-form-item label="绑定工具" prop="tools">
             <div class="tool-binding-area">
-              <div v-if="loadingTools" class="tool-loading">
-                <el-spinner /> 加载工具列表中...
-              </div>
+              <div v-if="loadingTools" class="tool-loading">加载工具列表中...</div>
               <div v-else-if="mcpTools.length === 0" class="tool-empty">
                 <span>暂无 MCP 工具可用，请先在</span>
                 <router-link to="/tools" class="tool-link">工具中心</router-link>
@@ -240,7 +228,7 @@ async function handleSave() {
 
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="handleSave">
-            {{ loading ? '保存中...' : '保 存' }}
+            {{ loading ? '保存中...' : '保存' }}
           </el-button>
           <el-button @click="router.push('/agents')">取消</el-button>
         </el-form-item>
@@ -257,58 +245,37 @@ async function handleSave() {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #1d2129;
+  color: var(--text-primary);
 }
 .form-tip {
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-tertiary);
   margin-left: 12px;
 }
 .tool-binding-area {
   width: 100%;
 }
 .tool-loading {
-  color: #86909c;
+  color: var(--text-tertiary);
   font-size: 14px;
 }
 .tool-empty {
-  color: #86909c;
+  color: var(--text-tertiary);
   font-size: 14px;
   padding: 8px 0;
 }
 .tool-empty .tool-link {
-  color: #409eff;
+  color: var(--accent);
   margin: 0 4px;
 }
 .tool-option-desc {
   float: right;
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 12px;
   margin-left: 12px;
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* 表单 divider 样式增强 */
-:deep(.el-divider__text) {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1d2129;
-  background: #fff;
-  padding: 0 16px;
-}
-
-/* 表单卡片内间距优化 */
-:deep(.el-card__body) {
-  padding: 28px;
-}
-:deep(.el-form-item) {
-  margin-bottom: 22px;
-}
-:deep(.el-form-item__label) {
-  font-weight: 500;
-  color: #4e5969;
 }
 </style>

@@ -1,9 +1,10 @@
 """
-MemoryManager —— 记忆管理器（V2 简化版）。
+MemoryManager —— 记忆管理器（V2.1 升级）。
 
 统一入口，管理所有类型的记忆操作。
-V2 只实现两级记忆：
-  1. 工作记忆（Working）：当前会话的对话摘要，存储在内存中
+V2.1 实现两级记忆：
+  1. 工作记忆（Working）：当前会话的对话摘要，**Redis 存储**（V2.1 升级），
+     Redis 不可用时自动降级到内存 List。
   2. 情景记忆（Episodic）：跨会话的重要信息，通过后端 API 存到 PostgreSQL
 
 V2 不实现的：
@@ -29,7 +30,7 @@ V2 不实现的：
 from typing import Any, Dict, List, Optional
 
 from memory.base import MemoryConfig, MemoryItem
-from memory.types.working import WorkingMemory
+from memory.types.redis_working import RedisWorkingMemory  # V2.1 升级：Redis 替代内存 List
 from memory.types.episodic import EpisodicMemory
 
 from config import get_config
@@ -57,9 +58,17 @@ class MemoryManager:
         url = backend_url or cfg.backend_base_url
 
         self.config = MemoryConfig()
-        self.working = WorkingMemory(
+        # ── V2.1 升级：RedisWorkingMemory 替代 WorkingMemory ──────────
+        # 优先使用 Redis 存储工作记忆（跨进程共享 + TTL 原生管理），
+        # Redis 不可用时自动降级到内存 List。
+        # 所有配置从 env 加载（见 config.py RuntimeConfig.redis_*）。
+        self.working = RedisWorkingMemory(
             ttl=self.config.working_ttl,
             capacity=self.config.working_capacity,
+            redis_host=cfg.redis_host,
+            redis_port=cfg.redis_port,
+            redis_password=cfg.redis_password,
+            redis_db=cfg.redis_wm_db,
         )
         self.episodic = EpisodicMemory(backend_url=url)
 

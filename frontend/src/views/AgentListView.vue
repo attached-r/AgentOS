@@ -85,7 +85,7 @@ onMounted(fetchAgents)
         <el-table-column label="名称" min-width="160">
           <template #default="{ row }">
             <div class="agent-name-cell">
-              <span class="status-dot" :class="row.status === 1 ? 'dot-active' : 'dot-inactive'"></span>
+              <span class="status-dot" :class="row.status === 1 ? 'active' : 'inactive'"></span>
               {{ row.name }}
             </div>
           </template>
@@ -130,6 +130,25 @@ onMounted(fetchAgents)
 </template>
 
 <style scoped>
+.agent-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.active {
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+.status-dot.inactive {
+  background: #d2d2d7;
+}
+
 .page-header {
   display: flex;
   align-items: center;
@@ -140,26 +159,6 @@ onMounted(fetchAgents)
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-/* Agent 名称 + 状态点 */
-.agent-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.dot-active {
-  background: #67c23a;
-  box-shadow: 0 0 0 2px rgba(103, 194, 58, 0.2);
-}
-.dot-inactive {
-  background: #c0c4cc;
+  color: var(--text-primary);
 }
 </style>

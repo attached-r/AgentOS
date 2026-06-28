@@ -1,7 +1,7 @@
  runtime/
   ├── main.py                     # FastAPI 入口，注册路由/中间件/异常处理
-  ├── config.py                   # 配置管理（从环境变量加载）
-  ├── .env.example                # 环境变量模板
+  ├── config.py                   # 配置管理（从环境变量加载，含 Redis 配置）
+  ├── .env.example                # 环境变量模板（含 Redis 凭据说明）
   ├── requirements.txt            # 依赖锁定
   │
   ├── core/                       # [基础组件层] 不依赖业务模块
@@ -13,13 +13,48 @@
   ├── agents/                     # [Agent 实现层] 依赖 core/
   │   ├── __init__.py
   │   ├── registry.py             # AgentConfig 模型 + AgentRegistry 注册表（纯状态，无路由）
-  │   └── simple_agent.py         # SimpleAgent：V1 默认实现（user msg → LLM → response）
+  │   ├── simple_agent.py         # SimpleAgent：V1 默认实现（user msg → LLM → response）
+  │   └── react_agent.py          # ReActAgent 【V2】多轮推理-行动循环（带 function calling）
+  │
+  ├── memory/                     # [记忆系统] V2 三级记忆
+  │   ├── __init__.py
+  │   ├── base.py                 # MemoryItem、MemoryConfig、BaseMemory 抽象
+  │   ├── embedding.py            # TF-IDF 嵌入（V2 预留，V3 换 fastembed）
+  │   ├── manager.py              # MemoryManager：统一入口，整合 working + episodic
+  │   └── types/
+  │       ├── __init__.py
+  │       ├── redis_working.py    # 【V2.1】工作记忆：Redis 存储，自动降级到内存 ← 新增
+  │       ├── working.py          # V2 工作记忆（内存 List，被 redis_working.py 替代）
+  │       └── episodic.py         # 情景记忆（httpx → 后端 PostgreSQL ILIKE 检索）
+  │
+  ├── rag/                        # [RAG 管线] V2 MVP
+  │   ├── __init__.py
+  │   ├── document.py             # Chunk 模型、ChunkConfig 分块配置
+  │   └── pipeline.py             # RAGPipeline：检索 + 上下文构建（后端 ILIKE / 本地空实现）
+  │
+  ├── context/                    # [上下文构建] 【V2】仿 hello_agents GSSC 模式
+  │   ├── __init__.py
+  │   └── builder.py              # ContextBuilder（Gather→Structure）+ ContextPacket
+  │
+  ├── tools/                      # [工具系统] V2 内置 + MCP
+  │   ├── __init__.py
+  │   ├── base.py                 # Tool 抽象基类 + FunctionTool 封装器
+  │   ├── registry.py             # ToolRegistry：注册中心 + 全局单例
+  │   ├── mcp_client.py           # MCPToolClient：连接 MCP 服务器、拉取工具列表
+  │   └── builtin/
+  │       ├── __init__.py
+  │       ├── calculator.py       # CalculatorTool：安全数学计算
+  │       ├── search.py           # SearchTool：DuckDuckGo 网页搜索
+  │       ├── memory_tool.py      # MemoryTool：主动记忆读写（双层注入：被动+主动）
+  │       └── rag_tool.py         # RAGTool：主动知识库检索（双层注入：被动+主动）
   │
   ├── api/                        # [路由层] 依赖 agents/ 和 core/
   │   ├── __init__.py
   │   ├── health.py               # GET /health
-  │   ├── registry_routes.py      # GET /runtime/agents, POST /runtime/agents/sync
-  │   └── invoke_routes.py        # POST /runtime/agents/{id}/invoke
+  │   ├── registry_routes.py      # GET /runtime/agents, POST /runtime/agents/sync/upsert/delete
+  │   ├── invoke_routes.py        # POST /runtime/agents/{id}/invoke（V1 直调 + V2 ReAct）
+  │   ├── mcp_routes.py           # POST /runtime/mcp/sync【V2】MCP 工具同步
+  │   └── memory_routes.py        # GET/POST /runtime/memory/*【V2】记忆查询/保存
   │
   ├── middlewares/                 # [中间件]
   │   └── logging.py              # RequestLogMiddleware：trace_id + 耗时日志
@@ -44,3 +79,10 @@ POST /runtime/agents/{id}/invoke  { ..., apiKey: "sk-xxx" }
 invoke_routes.py: config["api_key"] = req.api_key
    ↓
 LLMClient.from_agent_config(config) → 用用户自己的 Key 调用 LLM
+
+---
+V2.1 升级 — Redis 工作记忆（2026-06-28）
+  结构：memory/types/redis_working.py
+  配置：config.py → REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_WM_DB / REDIS_WM_TTL / REDIS_WM_CAPACITY
+  降级：Redis 不可用 → 透明回退到内存 List（每 60s 自动重连）
+  数据：Hash wm:{agent_id}:items + ZSet wm:{agent_id}:rank + EXPIRE TTL

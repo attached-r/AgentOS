@@ -19,6 +19,7 @@ const sending = ref(false)
 const errorMsg = ref('')
 const conversationTitle = ref('')
 const scrollRef = ref<HTMLDivElement>()
+const inputRef = ref<HTMLTextAreaElement>()
 
 // 记录当前 Agent 是否绑定了工具（用于显示"正在调用工具..."）
 const hasTools = ref(false)
@@ -107,6 +108,14 @@ function handleRetry() {
   }
 }
 
+function onInput() {
+  const el = inputRef.value as HTMLTextAreaElement | undefined
+  if (el) {
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }
+}
+
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
@@ -116,13 +125,6 @@ function handleKeydown(e: KeyboardEvent) {
 
 // ==================== 工具调用展示逻辑 ====================
 
-/**
- * 工具调用步骤：从 message 的 metadata 中解析。
- * V2 修复：原实现尝试从文本中解析 Thought/Action 标记，
- * 但 ReActAgent 实际使用 OpenAI function calling（结构化调用），
- * 步骤数据已由 Runtime 通过响应中的 steps 字段返回，
- * 后端将其存入消息的 metadata.steps 中。
- */
 interface ToolCallStep {
   step: number
   action: string
@@ -146,351 +148,527 @@ function getToolStepsFromMeta(msg: Message): ToolCallStep[] | null {
 
 <template>
   <div class="chat-page">
-    <!-- 标题栏 -->
+    <!-- ===== 标题栏 ===== -->
     <div class="chat-header">
-      <el-button text @click="router.push('/conversations')">
-        ← 返回
-      </el-button>
-      <span class="chat-title">{{ conversationTitle || `对话 ${conversationId}` }}</span>
+      <button class="back-btn" @click="router.push('/conversations')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+      <div class="chat-header-info">
+        <span class="chat-title">{{ conversationTitle || `对话 ${conversationId}` }}</span>
+        <span class="chat-status" v-if="sending">输入中...</span>
+      </div>
     </div>
 
-    <!-- 消息列表 -->
+    <!-- ===== 消息列表 ===== -->
     <div class="message-list" ref="scrollRef">
       <!-- 加载中 -->
       <div v-if="loading" class="center-state">
-        <el-skeleton :rows="5" animated />
+        <div class="loading-spinner">
+          <div class="spinner-dot"></div>
+          <div class="spinner-dot"></div>
+          <div class="spinner-dot"></div>
+        </div>
+        <span class="loading-text">加载对话历史...</span>
       </div>
 
       <!-- 空状态 -->
       <div v-else-if="messages.length === 0 && !sending" class="center-state">
-        <el-empty description="开始一段新的对话" />
+        <div class="empty-chat">
+          <div class="empty-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <h3 class="empty-title">开始对话</h3>
+          <p class="empty-desc">发送一条消息，开启与 AI Agent 的对话</p>
+        </div>
       </div>
 
       <!-- 消息气泡 -->
       <template v-else>
         <div
-          v-for="msg in messages"
+          v-for="(msg, idx) in messages"
           :key="msg.id"
           class="message-row"
           :class="msg.role === 'user' ? 'user-row' : 'assistant-row'"
         >
-          <div class="message-avatar" :class="msg.role === 'user' ? 'user-avatar' : 'assistant-avatar'">
-            {{ msg.role === 'user' ? 'U' : 'A' }}
+          <!-- AI 头像（左侧） -->
+          <div v-if="msg.role !== 'user'" class="msg-avatar ai-avatar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+              <path d="M20 16.5A6 6 0 0 0 14 11h-4a6 6 0 0 0-6 5.5V20h16v-3.5z"/>
+            </svg>
           </div>
-          <div class="message-content">
+
+          <div class="msg-content">
             <!-- 用户消息 -->
             <template v-if="msg.role === 'user'">
-              <div class="message-bubble user">
+              <div class="bubble user-bubble">
                 <div class="bubble-text">{{ msg.content }}</div>
               </div>
             </template>
 
-            <!-- Assistant 消息：从 metadata 解析工具调用步骤 -->
+            <!-- Assistant 消息 -->
             <template v-else>
-              <template v-if="getToolStepsFromMeta(msg) as ToolCallStep[] | null">
-                <div class="tool-call-card">
-                  <div class="tool-call-header">
-                    <span class="tool-call-title">🔧 工具调用过程</span>
+              <!-- 工具调用步骤 -->
+              <template v-if="getToolStepsFromMeta(msg)">
+                <div class="tool-steps">
+                  <div class="tool-steps-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                    </svg>
+                    <span>工具调用</span>
                   </div>
                   <div
-                    v-for="(step, stepIdx) in getToolStepsFromMeta(msg)"
-                    :key="stepIdx"
-                    class="tool-call-step"
+                    v-for="(step, si) in getToolStepsFromMeta(msg)"
+                    :key="si"
+                    class="tool-step"
                   >
-                    <div class="step-header">
-                      <el-tag size="small" type="warning" class="step-tag">
-                        #{{ step.step }} 调用工具
-                      </el-tag>
-                      <code class="step-tool-name">{{ step.action }}</code>
+                    <div class="step-head">
+                      <span class="step-badge">{{ si + 1 }}</span>
+                      <code class="step-tool">{{ step.action }}</code>
                     </div>
-                    <div class="step-detail">
-                      <span class="step-label">参数：</span>
-                      <pre class="step-code">{{ step.input }}</pre>
-                    </div>
-                    <div class="step-detail">
-                      <span class="step-label">结果：</span>
-                      <pre class="step-code">{{ step.output }}</pre>
+                    <div class="step-body">
+                      <div class="step-block">
+                        <span class="step-label">参数</span>
+                        <pre class="step-code">{{ step.input }}</pre>
+                      </div>
+                      <div class="step-block">
+                        <span class="step-label">结果</span>
+                        <pre class="step-code">{{ step.output }}</pre>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <!-- 普通文本消息：最终回答 -->
-                <div class="message-bubble assistant">
-                  <div class="bubble-text">{{ msg.content }}</div>
                 </div>
               </template>
 
-              <!-- 普通文本消息：直接展示 -->
-              <template v-else>
-                <div class="message-bubble assistant">
-                  <div class="bubble-text">{{ msg.content }}</div>
-                </div>
-              </template>
+              <!-- 最终回答气泡 -->
+              <div class="bubble ai-bubble">
+                <div class="bubble-text">{{ msg.content }}</div>
+              </div>
             </template>
+          </div>
+
+          <!-- 用户头像（右侧） -->
+          <div v-if="msg.role === 'user'" class="msg-avatar user-avatar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
           </div>
         </div>
 
         <!-- 发送中指示器 -->
         <div v-if="sending" class="message-row assistant-row">
-          <div class="message-avatar assistant-avatar">A</div>
-          <div class="message-content">
-            <div class="message-bubble assistant">
-              <div class="typing-dots">
-                <span class="dot"></span>
-                <span class="dot"></span>
-                <span class="dot"></span>
+          <div class="msg-avatar ai-avatar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+              <path d="M20 16.5A6 6 0 0 0 14 11h-4a6 6 0 0 0-6 5.5V20h16v-3.5z"/>
+            </svg>
+          </div>
+          <div class="msg-content">
+            <div class="bubble ai-bubble">
+              <div class="typing-indicator">
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
               </div>
-              <div v-if="hasTools" class="thinking-hint">正在调用工具...</div>
+              <div v-if="hasTools" class="thinking-text">正在调用工具...</div>
             </div>
           </div>
         </div>
 
-        <!-- 错误 + 重试 -->
+        <!-- 错误信息 -->
         <div v-if="errorMsg && !sending" class="error-row">
-          <el-alert
-            :title="errorMsg"
-            type="error"
-            show-icon
-            :closable="false"
-          >
-            <template #action>
-              <el-button size="small" type="danger" @click="handleRetry">重试</el-button>
-            </template>
-          </el-alert>
+          <div class="error-card">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            <span class="error-text">{{ errorMsg }}</span>
+            <button class="retry-btn" @click="handleRetry">重试</button>
+          </div>
         </div>
       </template>
     </div>
 
-    <!-- 输入区域 -->
+    <!-- ===== 输入区域 ===== -->
     <div class="input-area">
-      <el-input
-        v-model="inputText"
-        type="textarea"
-        :rows="3"
-        :disabled="sending"
-        placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-        @keydown="handleKeydown"
-        resize="none"
-      />
-      <el-button
-        type="primary"
-        :loading="sending"
-        :disabled="!inputText.trim() || sending"
-        @click="handleSend"
-        class="send-btn"
-      >
-        {{ sending ? '发送中...' : '发送' }}
-      </el-button>
+      <div class="input-wrapper">
+        <textarea
+          ref="inputRef"
+          v-model="inputText"
+          :disabled="sending"
+          placeholder="输入消息..."
+          rows="1"
+          @keydown="handleKeydown"
+          @input="onInput"
+        ></textarea>
+        <button
+          class="send-btn"
+          :class="{ active: inputText.trim() && !sending }"
+          :disabled="!inputText.trim() || sending"
+          @click="handleSend"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="input-footer">
+        <span class="input-hint">Enter 发送 · Shift+Enter 换行</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* ============================================================
+   Chat Page — Doubao 风格
+   ============================================================ */
+
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 56px - 48px);
-  background: #fff;
-  border-radius: 12px;
+  height: calc(100vh - 56px - 28px);
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
-  border: 1px solid var(--color-border);
+  position: relative;
 }
 
-/* === 顶栏 === */
+/* ============================
+   顶栏
+   ============================ */
 .chat-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--color-border);
-  background: #fff;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
   flex-shrink: 0;
+}
+.back-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+.back-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.chat-header-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .chat-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--text-primary);
+}
+.chat-status {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  animation: pulseStatus 1.5s ease infinite;
+}
+@keyframes pulseStatus {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
-/* === 消息列表 === */
+/* ============================
+   消息列表
+   ============================ */
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 20px;
-  background: #f7f8fa;
+  padding: 20px 40px;
+  background: var(--bg-secondary);
 }
 
 .center-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
+  gap: 12px;
 }
 
-/* 消息行 */
+/* --- 加载动画 --- */
+.loading-spinner {
+  display: flex;
+  gap: 8px;
+}
+.spinner-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: spinnerBounce 1.2s infinite both;
+  opacity: 0.3;
+}
+.spinner-dot:nth-child(2) { animation-delay: 0.16s; }
+.spinner-dot:nth-child(3) { animation-delay: 0.32s; }
+@keyframes spinnerBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+  30% { transform: translateY(-8px); opacity: 1; }
+}
+.loading-text {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+/* --- 空状态 --- */
+.empty-chat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px;
+}
+.empty-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+.empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.empty-desc {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* --- 消息容器 --- */
+/* 每条消息占据整行宽度，flex 控制内部对齐 */
 .message-row {
   display: flex;
   margin-bottom: 16px;
   gap: 10px;
-  animation: msgIn 0.2s ease;
+  width: 100%;
+  animation: msgSlideIn 0.25s ease both;
 }
-@keyframes msgIn {
-  from { opacity: 0; transform: translateY(6px); }
+@keyframes msgSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.message-row.user-row {
-  flex-direction: row-reverse;
+
+/* 用户消息 → 整体推到右侧，头像靠右边缘，气泡在头像左边 */
+.user-row {
+  justify-content: flex-end;
+}
+/* AI 消息 → 整体在左侧，头像靠左边缘，气泡在头像右边 */
+.assistant-row {
+  justify-content: flex-start;
 }
 
-.message-content {
-  max-width: 72%;
-}
-
-/* 头像 */
-.message-avatar {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+/* --- 头像 --- */
+.msg-avatar {
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
+  flex-shrink: 0;
   margin-top: 4px;
 }
 .user-avatar {
-  background: linear-gradient(135deg, #409eff, #3a8ee6);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  order: 1;                   /* 在 flex 布局中排最后 = 最右侧 */
 }
-.assistant-avatar {
-  background: linear-gradient(135deg, #67c23a, #5cadb0);
+.ai-avatar {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
 }
 
-/* 气泡 */
-.message-bubble {
-  padding: 10px 16px;
-  border-radius: 16px;
-  line-height: 1.65;
+/* --- 消息内容容器 --- */
+.msg-content {
+  max-width: 72%;
+  min-width: 0;
+}
+
+/* --- 气泡 --- */
+.bubble {
+  padding: 12px 16px;
+  line-height: 1.6;
   font-size: 14px;
   word-break: break-word;
   white-space: pre-wrap;
   position: relative;
 }
-.message-bubble.user {
-  background: #409eff;
-  color: #fff;
-  border-bottom-right-radius: 4px;
-}
-.message-bubble.assistant {
-  background: #fff;
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
-  border-bottom-left-radius: 4px;
-}
 .bubble-text {
   margin: 0;
 }
-
-/* === 打字指示器 === */
-.typing-dots {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 4px;
-}
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #bfc4cc;
-  animation: dotPulse 1.2s infinite both;
-}
-.dot:nth-child(2) { animation-delay: 0.16s; }
-.dot:nth-child(3) { animation-delay: 0.32s; }
-@keyframes dotPulse {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
-  30% { transform: translateY(-5px); opacity: 1; }
-}
-.thinking-hint {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  padding: 6px 4px 2px;
-  border-top: 1px dashed var(--color-border);
+.bubble-text:empty::after {
+  content: ' ';
+  display: inline-block;
 }
 
-/* === 工具调用卡片 — 步骤详情 === */
-.tool-call-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 8px;
-  border: 1px solid var(--color-border);
+/* 用户气泡 */
+.user-bubble {
+  background: linear-gradient(135deg, var(--accent), #4f46e5);
+  color: #fff;
+  border-radius: 18px 18px 4px 18px;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
 }
-.tool-call-header {
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px dashed var(--color-border);
+
+/* AI 气泡 */
+.ai-bubble {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: 18px 18px 18px 4px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-subtle);
 }
-.tool-call-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
+
+/* --- 打字指示器 --- */
+.typing-indicator {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  padding: 6px 0;
 }
-.tool-call-step {
-  padding: 10px 0;
-  position: relative;
-  border-left: 2px solid #e6a23c;
-  margin-left: 6px;
-  padding-left: 16px;
-}
-.tool-call-step:last-child {
-  border-left-color: #67c23a;
-  padding-bottom: 0;
-}
-.tool-call-step::before {
-  content: '';
-  position: absolute;
-  left: -5px;
-  top: 14px;
+.typing-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #e6a23c;
-  border: 2px solid #fff;
+  background: var(--text-tertiary);
+  animation: dotPulse 1.2s infinite both;
 }
-.tool-call-step:last-child::before {
-  background: #67c23a;
+.typing-dot:nth-child(2) { animation-delay: 0.16s; }
+.typing-dot:nth-child(3) { animation-delay: 0.32s; }
+@keyframes dotPulse {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+  30% { transform: translateY(-5px); opacity: 1; }
 }
-.step-header {
+.thinking-text {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 8px 4px 2px;
+  border-top: 1px dashed var(--border-subtle);
+  margin-top: 4px;
+}
+
+/* --- 工具调用步骤 --- */
+.tool-steps {
+  background: var(--bg-primary);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+}
+.tool-steps-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+.tool-step {
+  position: relative;
+  padding: 8px 0 8px 20px;
+  border-left: 2px solid #f59e0b;
+  margin-bottom: 8px;
+}
+.tool-step:last-child {
+  border-left-color: var(--color-success);
+  margin-bottom: 0;
+}
+.tool-step::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2px solid var(--bg-primary);
+}
+.tool-step:last-child::before {
+  background: var(--color-success);
+}
+.step-head {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
 }
-.step-tool-name {
+.step-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fef3c7;
+  color: #d97706;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.step-tool {
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-text-primary);
-  background: #f0f2f5;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
   padding: 2px 10px;
   border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
 }
-.step-detail {
-  margin-top: 4px;
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.step-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .step-label {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  display: block;
-  margin-bottom: 2px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
 }
 .step-code {
   font-size: 12px;
-  color: var(--color-text-secondary);
-  background: #f7f8fa;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
   padding: 6px 10px;
   border-radius: 6px;
   white-space: pre-wrap;
@@ -499,39 +677,139 @@ function getToolStepsFromMeta(msg: Message): ToolCallStep[] | null {
   font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
-/* === 输入区 === */
-.input-area {
+/* --- 错误卡片 --- */
+.error-row {
   display: flex;
-  gap: 10px;
-  padding: 14px 20px 16px;
-  border-top: 1px solid var(--color-border);
-  background: #fff;
-  flex-shrink: 0;
-  align-items: flex-end;
+  justify-content: center;
+  padding: 8px 0;
 }
-.input-area .el-textarea { flex: 1; }
-:deep(.input-area .el-textarea__inner) {
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 14px;
-  line-height: 1.5;
-  border: 1px solid var(--color-border);
-  transition: border-color 0.2s, box-shadow 0.2s;
+.error-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fef2f2;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  font-size: 13px;
 }
-:deep(.input-area .el-textarea__inner:focus) {
-  border-color: #409eff;
-  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
-}
-.send-btn {
-  height: 74px;
-  width: 84px;
-  border-radius: 10px;
+.retry-btn {
+  margin-left: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-danger);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.retry-btn:hover {
+  background: var(--color-danger);
+  color: #fff;
 }
 
-/* 错误 */
-.error-row {
-  padding: 8px 0;
+/* ============================
+   输入区域 — Doubao 风格
+   ============================ */
+.input-area {
+  flex-shrink: 0;
+  padding: 12px 24px 16px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 8px 8px 8px 18px;
+  border: 2px solid transparent;
+  transition: all var(--transition-fast);
+}
+.input-wrapper:focus-within {
+  border-color: var(--accent-light);
+  background: var(--bg-primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.06);
+}
+
+.input-wrapper textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  resize: none;
+  font-family: inherit;
+  max-height: 120px;
+  padding: 4px 0;
+}
+.input-wrapper textarea::placeholder {
+  color: var(--text-tertiary);
+}
+.input-wrapper textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.send-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+.send-btn.active:hover {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+.send-btn:disabled {
+  cursor: not-allowed;
+}
+
+.input-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 6px;
+}
+.input-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.3px;
+}
+
+/* ============================
+   响应式
+   ============================ */
+@media (max-width: 768px) {
+  .messages-container {
+    padding: 0 12px;
+  }
+  .msg-content {
+    max-width: 85%;
+  }
+  .input-area {
+    padding: 10px 12px 14px;
+  }
+  .chat-title {
+    font-size: 14px;
+  }
 }
 </style>

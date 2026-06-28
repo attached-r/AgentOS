@@ -12,8 +12,6 @@ import type { PageParams } from '@/types/api'
 const mcpServers = ref<McpServer[]>([])
 const mcpLoading = ref(false)
 const mcpTotal = ref(0)
-const mcpPage = ref(1)
-
 const mcpPageParams = reactive<PageParams>({ page: 1, size: 10 })
 
 async function loadMcpServers() {
@@ -197,14 +195,14 @@ onMounted(() => {
         <el-table-column prop="endpoint" label="端点" min-width="200" show-overflow-tooltip />
         <el-table-column label="传输协议" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.transport === 'sse' ? 'primary' : 'warning'" size="small">
+            <el-tag :type="row.transport === 'sse' ? 'primary' : 'warning'" size="small" effect="plain">
               {{ row.transport?.toUpperCase() || 'SSE' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small" effect="plain">
               {{ row.status === 1 ? '启用' : '禁用' }}
             </el-tag>
           </template>
@@ -265,7 +263,7 @@ onMounted(() => {
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
         <el-table-column label="来源" width="110">
           <template #default="{ row }">
-            <el-tag :type="row.source === 'builtin' ? 'primary' : 'success'" size="small">
+            <el-tag :type="row.source === 'builtin' ? 'primary' : 'success'" size="small" effect="plain">
               {{ row.source === 'builtin' ? '内置' : 'MCP' }}
             </el-tag>
           </template>
@@ -344,22 +342,11 @@ onMounted(() => {
 <style scoped>
 .section-card {
   margin-bottom: 20px;
-  border-radius: 12px !important;
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.card-header span {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1d2129;
 }
 .schema-pre {
   margin: 0;
   padding: 12px;
-  background: #1d2129;
+  background: var(--text-primary);
   border-radius: 6px;
   font-size: 12px;
   line-height: 1.6;

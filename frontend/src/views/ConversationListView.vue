@@ -129,7 +129,7 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small" effect="plain">
               {{ row.status === 'active' ? '进行中' : '已完成' }}
             </el-tag>
           </template>
@@ -181,18 +181,3 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
-
-<style scoped>
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-.page-header h2 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-  color: #1d2129;
-}
-</style>
