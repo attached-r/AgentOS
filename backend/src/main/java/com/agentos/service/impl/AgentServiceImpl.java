@@ -123,8 +123,21 @@ public class AgentServiceImpl implements AgentService {
             response = agentRuntimeClient.invoke(id, null, messages, null, null, null);
             taskLogService.info(taskId, id, "Agent 调用成功");
         } catch (Exception e) {
-            taskLogService.error(taskId, id, "调用失败: " + e.getMessage());
-            throw new BusinessException("调用 Agent 失败: " + e.getMessage());
+            String msg = e.getMessage();
+            if (msg != null && (msg.contains("404") || msg.contains("AGENT_NOT_FOUND"))) {
+                log.warn("Agent {} 在 Runtime 中不存在，尝试重新同步", id);
+                try {
+                    agentRuntimeClient.upsertAgent(toSyncRequest(agent));
+                    response = agentRuntimeClient.invoke(id, null, messages, null, null, null);
+                    taskLogService.info(taskId, id, "Agent 调用成功(重试)");
+                } catch (Exception retryEx) {
+                    taskLogService.error(taskId, id, "重试仍失败: " + retryEx.getMessage());
+                    throw new BusinessException("调用 Agent 失败: " + retryEx.getMessage());
+                }
+            } else {
+                taskLogService.error(taskId, id, "调用失败: " + msg);
+                throw new BusinessException("调用 Agent 失败: " + msg);
+            }
         }
         return response.getContent();
     }

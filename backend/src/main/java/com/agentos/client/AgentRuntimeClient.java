@@ -200,7 +200,8 @@ public class AgentRuntimeClient {
         /** 工具描述 */
         private String description;
 
-        /** OpenAI function calling schema（原始 JSON 对象） */
+        /** MCP inputSchema（JSON Schema 格式），对应 runtime 返回的 inputSchema 字段 */
+        @JsonProperty("inputSchema")
         private Object schema;
     }
 }

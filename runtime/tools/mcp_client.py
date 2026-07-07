@@ -47,18 +47,21 @@ class MCPToolClient:
         endpoint: str,
         transport: str = "sse",
         timeout: int = 30,
+        read_timeout: int = 60,
     ):
         """
         Args:
-            endpoint:   MCP 服务器地址
-                       SSE 模式: HTTP URL，如 "http://localhost:8000/mcp"
-                       stdio 模式: 命令字符串或脚本路径
-            transport:  传输协议， "sse" 或 "stdio"
-            timeout:    连接超时秒数
+            endpoint:      MCP 服务器地址
+                           SSE 模式: HTTP URL，如 "http://localhost:8000/mcp"
+                           stdio 模式: 命令字符串或脚本路径
+            transport:     传输协议， "sse" 或 "stdio"
+            timeout:       连接超时秒数
+            read_timeout:  SSE 读取超时秒数
         """
         self.endpoint = endpoint
         self.transport = transport
         self.timeout = timeout
+        self.read_timeout = read_timeout
 
         # fastmcp.Client 实例（连接后创建）
         self._client: Optional[Any] = None
@@ -87,7 +90,7 @@ class MCPToolClient:
 
                 transport = SSETransport(
                     url=self.endpoint,
-                    timeout=self.timeout,
+                    sse_read_timeout=self.read_timeout,
                 )
             elif self.transport == "stdio":
                 # stdio 模式：通过命令启动本地 MCP 服务器进程

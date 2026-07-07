@@ -70,6 +70,7 @@ async def sync_mcp_tools(req: McpSyncRequest):
             endpoint=req.endpoint,
             transport=req.transport,
             timeout=config.mcp_connection_timeout,
+            read_timeout=config.mcp_read_timeout,
         )
 
         await client.connect()
@@ -84,6 +85,6 @@ async def sync_mcp_tools(req: McpSyncRequest):
         return tools
 
     except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=f"MCP 连接失败: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"MCP 同步失败: {e}")
