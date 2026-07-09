@@ -5,6 +5,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.agentos.common.R;
 import com.agentos.model.dto.CreateKnowledgeDocReq;
 import com.agentos.model.entity.AgentMemory;
+import com.agentos.model.entity.KnowledgeChunk;
 import com.agentos.model.entity.KnowledgeDoc;
 import com.agentos.service.AgentMemoryService;
 import com.agentos.service.KnowledgeDocService;
@@ -70,22 +71,22 @@ public class MemoryCenterController {
     }
 
     /**
-     * 搜索知识库文档（关键词匹配）
+     * 搜索知识库（Chunk 级关键词匹配）
      * <p>
-     * V2 修复：RAGPipeline._backend_search() 调用此端点进行检索，
-     * 使用 PostgreSQL ILIKE 关键词匹配，返回 Top-K 匹配文档。
-     * 此端点由 Python Runtime 的 RAGPipeline 调用，而非前端直接调用。
+     * V2 改造：RAGPipeline._backend_search() 调用此端点进行检索。
+     * 原返回整篇 KnowledgeDoc，现返回 knowledge_chunk 表的分块结果，
+     * 每个结果对应文档中的一个片段，精度更高。
+     * 使用 PostgreSQL ILIKE 匹配 chunk.content 和 chunk.title。
      * </p>
      *
      * @param q      搜索关键词
      * @param topK   返回条数上限
-     * @return 匹配的文档列表
+     * @return 匹配的 Chunk 列表
      */
     @GetMapping("/knowledge/docs/search")
-    @SaCheckLogin
-    public R<List<KnowledgeDoc>> searchDocs(@RequestParam String q,
-                                             @RequestParam(defaultValue = "3") int topK) {
-        return R.ok(knowledgeDocService.search(q, topK));
+    public R<List<KnowledgeChunk>> searchDocs(@RequestParam String q,
+                                               @RequestParam(defaultValue = "3") int topK) {
+        return R.ok(knowledgeDocService.searchChunks(q, topK));
     }
 
     /**
@@ -132,13 +133,22 @@ public class MemoryCenterController {
      * @return 保存后的记忆记录
      */
     @PostMapping("/agents/{id}/memories")
-    @SaCheckLogin
     public R<AgentMemory> saveMemory(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         AgentMemory memory = new AgentMemory();
         memory.setAgentId(id);
-        // user_id 优先取请求体中的，否则用当前登录用户的
+        // user_id 优先取请求体中的，否则尝试取当前登录用户，兜底 1（默认管理员）
+        // 注意：user_id=0 会导致数据库 FK 约束违反（sys_user 无 id=0 的记录）
         Object bodyUserId = body.get("user_id");
-        memory.setUserId(bodyUserId instanceof Number n ? n.longValue() : StpUtil.getLoginIdAsLong());
+        if (bodyUserId instanceof Number n) {
+            long uid = n.longValue();
+            memory.setUserId(uid > 0 ? uid : 1L);
+        } else {
+            try {
+                memory.setUserId(StpUtil.getLoginIdAsLong());
+            } catch (Exception e) {
+                memory.setUserId(1L);
+            }
+        }
         memory.setMemoryType((String) body.getOrDefault("memory_type", "episodic"));
         memory.setContent((String) body.get("content"));
         // importance 兼容 float / double / int 类型转换
@@ -163,7 +173,6 @@ public class MemoryCenterController {
      * @return 记忆分页数据
      */
     @GetMapping("/agents/{id}/memories")
-    @SaCheckLogin
     public R<Page<AgentMemory>> listMemories(@PathVariable Long id,
                                               @RequestParam(defaultValue = "1") int page,
                                               @RequestParam(defaultValue = "10") int size,

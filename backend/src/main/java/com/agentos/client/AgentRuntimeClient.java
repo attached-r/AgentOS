@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -183,6 +184,44 @@ public class AgentRuntimeClient {
 
         @JsonProperty("total_tokens")
         private Integer totalTokens;
+    }
+
+    /**
+     * 调用 Runtime 对文档内容进行分块
+     * <p>
+     * POST /runtime/rag/chunk — Runtime 的 split_document() 将 content 切割为 Chunk 列表。
+     * 后端拿到分块结果后存入 knowledge_chunk 表供后续检索。
+     * </p>
+     *
+     * @param content 文档原文
+     * @param title   文档标题
+     * @return 分块结果（含 chunks 列表）
+     */
+    public ChunkResult chunkDocument(String content, String title) {
+        String url = baseUrl + "/runtime/rag/chunk";
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("content", content);
+        requestBody.put("title", title);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        return restTemplate.postForObject(url, entity, ChunkResult.class);
+    }
+
+    @Data
+    public static class ChunkResult {
+        private List<ChunkItem> chunks;
+    }
+
+    @Data
+    public static class ChunkItem {
+        private String content;
+        @JsonProperty("index")
+        private int seq;
+        private String title;
     }
 
     /**

@@ -15,6 +15,9 @@ public class SecurityConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/api/auth/**",
+                        "/api/agents/*/memories",
+                        "/api/agents/*/memories/**",
+                        "/api/knowledge/docs/search",
                         "/swagger-ui.html", "/swagger-ui/**",
                         "/v1/api-docs", "/v1/api-docs/**"
                 );

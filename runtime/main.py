@@ -43,6 +43,7 @@ from errors.handler import (
 # ── V2 模块 ─────────────────────────────────────────────────────
 from api.mcp_routes import router as mcp_router
 from api.memory_routes import router as memory_router
+from api.rag_routes import router as rag_router
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +132,13 @@ app.include_router(
     memory_router,
     prefix="/runtime",
     tags=["memory"],
+)
+
+# RAG 文档分块：POST /runtime/rag/chunk（V2 新增）
+app.include_router(
+    rag_router,
+    prefix="/runtime",
+    tags=["rag"],
 )
 
 # ---------------------------------------------------------------------------

@@ -115,143 +115,279 @@ async function handleSave() {
 </script>
 
 <template>
-  <div>
+  <div class="form-page">
+    <!-- ===== 页面标题栏 ===== -->
     <div class="page-header">
-      <h2>{{ isEdit ? '编辑 Agent' : '创建 Agent' }}</h2>
+      <div class="header-title-group">
+        <button class="back-btn" @click="router.push('/agents')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          返回
+        </button>
+        <h2>{{ isEdit ? '编辑 Agent' : '创建 Agent' }}</h2>
+      </div>
     </div>
 
-    <el-card shadow="never" v-loading="pageLoading">
+    <div class="form-card" v-loading="pageLoading">
       <el-form
         ref="formRef"
         :model="form"
         :rules="rules"
         label-width="120px"
-        style="max-width: 700px"
+        class="agent-form"
       >
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="给 Agent 起个名字" />
-        </el-form-item>
+        <!-- ============================================================
+             分区一：基本信息
+             ============================================================ -->
+        <div class="form-section">
+          <div class="form-section-header">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span>基本信息</span>
+          </div>
 
-        <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="3"
-            placeholder="简要描述 Agent 的用途"
-          />
-        </el-form-item>
+          <div class="form-section-body">
+            <el-form-item label="名称" prop="name">
+              <el-input v-model="form.name" placeholder="给 Agent 起个名字" />
+            </el-form-item>
 
-        <el-form-item label="系统提示词" prop="systemPrompt">
-          <el-input
-            v-model="form.systemPrompt"
-            type="textarea"
-            :rows="10"
-            placeholder="设定 Agent 的角色和行为规则..."
-          />
-        </el-form-item>
+            <el-form-item label="描述" prop="description">
+              <el-input
+                v-model="form.description"
+                type="textarea"
+                :rows="3"
+                placeholder="简要描述 Agent 的用途"
+              />
+            </el-form-item>
 
-        <el-form-item label="模型供应商" prop="modelProvider">
-          <el-select v-model="form.modelProvider" style="width: 100%">
-            <el-option label="OpenAI" value="openai" />
-            <el-option label="Google" value="google" />
-            <el-option label="DeepSeek" value="deepseek" />
-          </el-select>
-        </el-form-item>
+            <el-form-item label="系统提示词" prop="systemPrompt">
+              <el-input
+                v-model="form.systemPrompt"
+                type="textarea"
+                :rows="10"
+                placeholder="设定 Agent 的角色和行为规则..."
+              />
+            </el-form-item>
+          </div>
+        </div>
 
-        <el-form-item label="模型" prop="modelName">
-          <el-select v-model="form.modelName" style="width: 100%">
-            <el-option
-              v-for="opt in modelOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
-        </el-form-item>
+        <!-- ============================================================
+             分区二：模型配置
+             ============================================================ -->
+        <div class="form-section">
+          <div class="form-section-header">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="4" y="2" width="16" height="20" rx="2" ry="2"/>
+              <line x1="9" y1="22" x2="15" y2="22"/>
+              <line x1="12" y1="18" x2="12" y2="22"/>
+            </svg>
+            <span>模型配置</span>
+          </div>
 
-        <el-form-item label="温度" prop="temperature">
-          <el-slider
-            v-model="form.temperature"
-            :min="0"
-            :max="2"
-            :step="0.1"
-            show-input
-            style="width: 300px"
-          />
-          <span class="form-tip">值越高输出越有创造性，但可能降低准确性</span>
-        </el-form-item>
-
-        <el-form-item label="最大 Token" prop="maxTokens">
-          <el-input-number
-            v-model="form.maxTokens"
-            :min="1"
-            :max="32768"
-            :step="256"
-          />
-        </el-form-item>
-
-        <template v-if="isEdit">
-          <el-divider />
-          <el-form-item label="绑定工具" prop="tools">
-            <div class="tool-binding-area">
-              <div v-if="loadingTools" class="tool-loading">加载工具列表中...</div>
-              <div v-else-if="mcpTools.length === 0" class="tool-empty">
-                <span>暂无 MCP 工具可用，请先在</span>
-                <router-link to="/tools" class="tool-link">工具中心</router-link>
-                <span>注册 MCP 服务并同步工具。</span>
-              </div>
-              <el-select
-                v-else
-                v-model="boundToolIds"
-                multiple
-                collapse-tags
-                collapse-tags-tooltip
-                placeholder="选择要绑定的 MCP 工具"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="tool in mcpTools"
-                  :key="tool.id"
-                  :label="tool.name"
-                  :value="tool.id"
-                >
-                  <span>{{ tool.name }}</span>
-                  <span class="tool-option-desc">{{ tool.description }}</span>
-                </el-option>
+          <div class="form-section-body model-config">
+            <el-form-item label="供应商" prop="modelProvider">
+              <el-select v-model="form.modelProvider" style="width: 100%">
+                <el-option label="OpenAI" value="openai" />
+                <el-option label="Google" value="google" />
+                <el-option label="DeepSeek" value="deepseek" />
               </el-select>
-              <div class="form-tip">
-                为 Agent 绑定 MCP 工具后，Agent 可在对话中自主调用这些工具。内置工具默认对所有 Agent 可用。
-              </div>
-            </div>
-          </el-form-item>
-        </template>
+            </el-form-item>
 
-        <el-form-item>
-          <el-button type="primary" :loading="loading" @click="handleSave">
+            <el-form-item label="模型" prop="modelName">
+              <el-select v-model="form.modelName" style="width: 100%">
+                <el-option
+                  v-for="opt in modelOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="温度" prop="temperature">
+              <div class="slider-with-tip">
+                <el-slider
+                  v-model="form.temperature"
+                  :min="0"
+                  :max="2"
+                  :step="0.1"
+                  show-input
+                  style="width: 280px"
+                />
+                <span class="form-tip">值越高输出越有创造性，但可能降低准确性</span>
+              </div>
+            </el-form-item>
+
+            <el-form-item label="最大 Token" prop="maxTokens">
+              <el-input-number
+                v-model="form.maxTokens"
+                :min="1"
+                :max="32768"
+                :step="256"
+              />
+            </el-form-item>
+          </div>
+        </div>
+
+        <!-- ============================================================
+             分区三：工具绑定（仅编辑模式）
+             ============================================================ -->
+        <div v-if="isEdit" class="form-section">
+          <div class="form-section-header">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            <span>工具绑定</span>
+          </div>
+
+          <div class="form-section-body">
+            <el-form-item label="绑定工具" prop="tools">
+              <div class="tool-binding-area">
+                <div v-if="loadingTools" class="tool-loading">加载工具列表中...</div>
+                <div v-else-if="mcpTools.length === 0" class="tool-empty">
+                  <span>暂无 MCP 工具可用，请先在</span>
+                  <router-link to="/tools" class="tool-link">工具中心</router-link>
+                  <span>注册 MCP 服务并同步工具。</span>
+                </div>
+                <el-select
+                  v-else
+                  v-model="boundToolIds"
+                  multiple
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="选择要绑定的 MCP 工具"
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="tool in mcpTools"
+                    :key="tool.id"
+                    :label="tool.name"
+                    :value="tool.id"
+                  >
+                    <span>{{ tool.name }}</span>
+                    <span class="tool-option-desc">{{ tool.description }}</span>
+                  </el-option>
+                </el-select>
+                <div class="form-tip block">
+                  为 Agent 绑定 MCP 工具后，Agent 可在对话中自主调用这些工具。内置工具默认对所有 Agent 可用。
+                </div>
+              </div>
+            </el-form-item>
+          </div>
+        </div>
+
+        <!-- ===== 表单操作按钮 ===== -->
+        <div class="form-actions">
+          <el-button type="primary" :loading="loading" @click="handleSave" size="large">
             {{ loading ? '保存中...' : '保存' }}
           </el-button>
-          <el-button @click="router.push('/agents')">取消</el-button>
-        </el-form-item>
+          <el-button @click="router.push('/agents')" size="large">取消</el-button>
+        </div>
       </el-form>
-    </el-card>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* ============================================================
+   Doubao 风格改造 — Phase C4
+   AgentFormView: 表单分区优化
+   改动：基本信息/模型配置/工具绑定三区视觉分隔
+   保留：el-form 组件（Element Plus 表单控件）
+   ============================================================ */
+
+.form-page {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+/* ===== 页面标题栏 ===== */
 .page-header {
   margin-bottom: 20px;
 }
-.page-header h2 {
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.back-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.header-title-group h2 {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
 }
+
+/* ===== 表单卡片 ===== */
+.form-card {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 28px 32px;
+}
+
+/* ===== 分区 ===== */
+.form-section {
+  margin-bottom: 28px;
+}
+.form-section:last-of-type {
+  margin-bottom: 0;
+}
+.form-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.form-section-header svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.form-section-body {
+  max-width: 600px;
+}
+
+/* ===== 表单控件辅助样式 ===== */
+.slider-with-tip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 .form-tip {
   font-size: 12px;
   color: var(--text-tertiary);
-  margin-left: 12px;
 }
+.form-tip.block {
+  display: block;
+  margin-top: 8px;
+}
+
+/* 工具绑定 */
 .tool-binding-area {
   width: 100%;
 }
@@ -277,5 +413,22 @@ async function handleSave() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ===== 表单操作按钮 ===== */
+.form-actions {
+  padding-top: 24px;
+  margin-top: 24px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 12px;
+}
+
+/* ===== Element Plus 表单内边距调优 ===== */
+:deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+:deep(.el-form-item:last-child) {
+  margin-bottom: 0;
 }
 </style>
