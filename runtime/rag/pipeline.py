@@ -1,19 +1,19 @@
 """
 RAG Pipeline —— 检索增强生成管线（V2 MVP）。
 
-V2 简化方案：
-  - 文档切片后直接通过后端 API 存入 PostgreSQL
-  - 检索时用关键词匹配（后端 ILIKE / tsvector）
-  - 不做向量检索（V3 引入 Qdrant）
-  - 不做重排序（V3 引入）
+V2 实现：
+  - 文档索引：triggerIndex → POST /runtime/rag/chunk 分块 → 存入 knowledge_chunk 表
+  - 检索：后端 API ILIKE 搜索 knowledge_chunk 表 → 返回 Chunk 级结果
+  - 降级：本地关键词匹配（后端不可用时兜底）
+  - V3 升级为 Qdrant 向量检索 + 重排序
 
 流程：
-  1. Index: 文档分块 → POST 后端 API 入库
-  2. Retrieve: 用户查询 → GET 后端 API 搜索 → 返回 Top-K Chunk
+  1. Index: 文档分块 → 存入 knowledge_chunk 表
+  2. Retrieve: 用户查询 → GET 后端 API 搜索 chunk → 返回 Top-K Chunk
   3. Generate: 检索结果拼入 system prompt → LLM 增强生成
 
 用法：
-    pipeline = RAGPipeline(backend_url="http://localhost:8080")
+    pipeline = RAGPipeline(backend_url="http://localhost:8099")
 
     # 检索
     chunks = await pipeline.retrieve("AgentOS 的核心功能是什么？", agent_id=1)
@@ -25,13 +25,19 @@ V2 简化方案：
     prompt = f"基于以下信息回答问题：\n{context}\n\n问题：..."
 """
 import math
-import re
-from collections import Counter
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from rag.document import Chunk, ChunkConfig
+
+
+# ---------------------------------------------------------------------------
+# 本地缓存（模块级，跨 RAGPipeline 实例共享）
+# ---------------------------------------------------------------------------
+# V2 降级方案的后备数据：每次 _backend_search 成功后将 chunk 缓存到此列表，
+# 后端不可用时 _local_search 在此缓存中做关键词匹配。
+_local_cache: List[Chunk] = []
 
 
 # ---------------------------------------------------------------------------
@@ -42,15 +48,20 @@ class RAGPipeline:
     """
     检索增强生成管线。
 
-    提供文档索引、检索、上下文构建的端到端能力。
+    提供文档检索、上下文构建、文档分块能力。
     V2 实现 MVP 版本，V3 升级为向量检索 + 重排序。
 
     V2 检索策略：
-      - 优先：通过后端 API 进行 ILIKE / tsvector 搜索
+      - 优先：通过后端 API 搜索 knowledge_chunk 表（ILIKE）
       - 降级：本地关键词匹配（当后端不可用时）
+
+    V2 索引策略：
+      - 后端 triggerIndex 调 Runtime POST /runtime/rag/chunk
+      - Runtime 的 split_document() 做分块并返回（不直接落库）
+      - 后端将分块结果存入 knowledge_chunk 表
     """
 
-    def __init__(self, backend_url: str = "http://localhost:8080"):
+    def __init__(self, backend_url: str = "http://localhost:8099"):
         """
         Args:
             backend_url: SpringBoot 后端 API 基础 URL
@@ -69,7 +80,7 @@ class RAGPipeline:
         """
         检索与查询相关的知识库片段。
 
-        优先通过后端 API 搜索（PostgreSQL ILIKE），
+        优先通过后端 API 搜索（PostgreSQL ILIKE on knowledge_chunk），
         后端不可用时降级为本地关键词匹配。
 
         Args:
@@ -78,7 +89,7 @@ class RAGPipeline:
             top_k:    返回数量上限
 
         Returns:
-            相关的 Chunk 列表（按相关度降序）
+            相关的 Chunk 列表（按相关度降序，有 score 字段）
         """
         if not query or not query.strip():
             return []
@@ -88,7 +99,7 @@ class RAGPipeline:
         if chunks:
             return chunks
 
-        # 降级：本地关键词匹配（V2 简化）
+        # 降级：本地关键词匹配
         return self._local_search(query, top_k)
 
     # ── 上下文构建 ────────────────────────────────────────────────
@@ -159,7 +170,7 @@ class RAGPipeline:
             overlap=self.chunk_config.chunk_overlap,
         )
 
-    # ── 内部方法 ──────────────────────────────────────────────────
+    # ── 内部方法：后端搜索 ──────────────────────────────────────────
 
     async def _backend_search(
         self,
@@ -168,12 +179,19 @@ class RAGPipeline:
         top_k: int = 3,
     ) -> List[Chunk]:
         """
-        通过后端 API 搜索知识库。
+        通过后端 API 搜索知识库分块。
 
-        GET /api/knowledge/docs/search?q=xxx&agent_id=xxx&top_k=xxx
+        GET /api/knowledge/docs/search?q=xxx&top_k=xxx
+
+        后端返回 knowledge_chunk 记录，字段映射：
+          backend JSON    →  Chunk 字段
+          "id"            →  doc_id
+          "content"       →  content
+          "seq"           →  index（块序号）
+          "title"         →  title
 
         Returns:
-            Chunk 列表，后端不可用时返回空列表
+            Chunk 列表（含 score），后端不可用时返回空列表
         """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -187,33 +205,101 @@ class RAGPipeline:
                 )
 
                 if resp.status_code == 200:
-                    data = resp.json()
-                    if isinstance(data, list):
-                        return [Chunk(**c) for c in data]
-                    return [Chunk(**data)] if data else []
+                    body = resp.json()
+                    # 解包 R<T>：{ code: 200, msg: "success", data: [...] }
+                    if isinstance(body, dict) and "data" in body:
+                        raw_list = body["data"]
+                    else:
+                        raw_list = body
+
+                    if not isinstance(raw_list, list):
+                        return []
+
+                    chunks = []
+                    for item in raw_list:
+                        chunk = Chunk(
+                            doc_id=item.get("id", 0),         # KnowledgeChunk.id → doc_id
+                            content=item.get("content", ""),
+                            index=item.get("seq", 0),         # DB 列名 seq → Chunk.index
+                            title=item.get("title", ""),
+                            score=self._calc_keyword_score(query, item.get("content", "")),
+                        )
+                        chunks.append(chunk)
+
+                    # 缓存到本地（供 _local_search 降级使用）
+                    _local_cache.clear()
+                    _local_cache.extend(chunks)
+
+                    return chunks
 
                 return []
 
         except httpx.RequestError:
             return []
 
+    # ── 内部方法：本地降级搜索 ──────────────────────────────────────
+
     def _local_search(self, query: str, top_k: int = 3) -> List[Chunk]:
         """
-        本地关键词匹配检索。
+        本地关键词匹配检索（后端不可用时的兜底方案）。
 
-        V2 降级方案：仅作简单关键词匹配，不依赖后端。
-        适用于后端 API 不可用时的兜底场景。
+        在 _local_cache（由 _backend_search 成功时填充）中做关键词频率匹配。
+        V2 简化实现，不做 TF-IDF 或 BM25。
 
         Args:
             query:  搜索关键词
             top_k: 返回数量上限
 
         Returns:
-            匹配的 Chunk 列表（V2 简化返回空列表）
+            匹配的 Chunk 列表（按关键词命中数降序，含 score）
         """
-        # V2 简化为空实现 —— 本地检索依赖本地文档缓存，
-        # V2 暂不实现本地文档缓存，返回空。
-        return []
+        if not _local_cache:
+            return []
+
+        keywords = set(query.lower().split())
+        if not keywords:
+            return []
+
+        scored: List[Chunk] = []
+        for chunk in _local_cache:
+            content_lower = chunk.content.lower()
+            # 计算关键词命中数
+            hits = sum(1 for kw in keywords if kw in content_lower)
+            if hits > 0:
+                chunk.score = min(1.0, hits / len(keywords))
+                # title 匹配额外加分
+                if chunk.title and any(kw in chunk.title.lower() for kw in keywords):
+                    chunk.score = min(1.0, chunk.score + 0.1)
+                scored.append(chunk)
+
+        scored.sort(key=lambda c: c.score, reverse=True)
+        return scored[:top_k]
+
+    # ── 内部方法：关键词得分计算 ────────────────────────────────────
+
+    def _calc_keyword_score(self, query: str, content: str) -> float:
+        """
+        计算关键词匹配得分。
+
+        简单统计查询词在 content 中出现的比例。
+
+        Args:
+            query:   用户查询字符串
+            content: 待匹配的文本内容
+
+        Returns:
+            0.0 ~ 1.0 的匹配得分
+        """
+        if not query or not content:
+            return 0.0
+
+        keywords = query.lower().split()
+        if not keywords:
+            return 0.0
+
+        content_lower = content.lower()
+        hits = sum(1 for kw in keywords if kw in content_lower)
+        return min(1.0, hits / len(keywords))
 
     def _split_text(
         self,

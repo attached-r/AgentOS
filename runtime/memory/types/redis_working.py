@@ -184,6 +184,9 @@ class RedisWorkingMemory(BaseMemory):
             "socket_connect_timeout": 3,
             "socket_timeout": 5,
             "retry_on_timeout": False,  # 失败让上游降级，不阻塞重试
+            # redis-py v5+ 默认 RESP3 协议，老版本 Redis Server 不认识 HELLO 命令。
+            # 强制 RESP2 协议兼容 Redis < 6.0。
+            "protocol": 2,
         }
         if self._redis_password:
             kwargs["password"] = self._redis_password

@@ -7,6 +7,9 @@ import { getAgentApi } from '@/api/agents'
 import { getAgentToolsApi } from '@/api/tools'
 import type { Message } from '@/types/conversation'
 
+// V2.1 新增：Markdown 渲染 + 代码高亮
+import { renderMarkdown, initCopyButtons } from '@/utils/markdown'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -49,13 +52,19 @@ onMounted(async () => {
     router.push('/conversations')
   } finally {
     loading.value = false
-    scrollToBottom()
+    nextTick(() => {
+      scrollToBottom()
+      initCopyButtons(scrollRef.value!)
+    })
   }
 })
 
-// 监听消息变化自动滚动
+// 监听消息变化自动滚动 + 初始化代码复制按钮
 watch(messages, () => {
-  nextTick(scrollToBottom)
+  nextTick(() => {
+    scrollToBottom()
+    initCopyButtons(scrollRef.value!)
+  })
 }, { deep: true })
 
 function scrollToBottom() {
@@ -244,9 +253,9 @@ function getToolStepsFromMeta(msg: Message): ToolCallStep[] | null {
                 </div>
               </template>
 
-              <!-- 最终回答气泡 -->
+              <!-- 最终回答气泡（Markdown 渲染） -->
               <div class="bubble ai-bubble">
-                <div class="bubble-text">{{ msg.content }}</div>
+                <div class="bubble-text markdown-body" v-html="renderMarkdown(msg.content)"></div>
               </div>
             </template>
           </div>
@@ -810,6 +819,190 @@ function getToolStepsFromMeta(msg: Message): ToolCallStep[] | null {
   }
   .chat-title {
     font-size: 14px;
+  }
+}
+
+/* ============================================================
+   Markdown 渲染样式（LLM 回复中的格式化内容）
+   作用在 .markdown-body 内部，覆盖 marked 生成的默认 HTML
+   ============================================================ */
+
+/* --- 基础排版 --- */
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child  { margin-bottom: 0; }
+
+/* 标题 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 1.2em 0 0.6em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.markdown-body h1 { font-size: 1.3em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.3em; }
+.markdown-body h2 { font-size: 1.15em; }
+.markdown-body h3 { font-size: 1.05em; }
+.markdown-body h4 { font-size: 1em; }
+
+/* 段落 */
+.markdown-body p {
+  margin: 0.5em 0;
+}
+
+/* 列表 */
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.4em 0;
+  padding-left: 1.5em;
+}
+.markdown-body li {
+  margin: 0.2em 0;
+}
+
+/* 引用 */
+.markdown-body blockquote {
+  margin: 0.6em 0;
+  padding: 0.3em 1em;
+  border-left: 3px solid var(--accent-light);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 0 6px 6px 0;
+}
+
+/* 表格 */
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
+  font-size: 13px;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  text-align: left;
+}
+.markdown-body th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+/* 水平线 */
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 1em 0;
+}
+
+/* 行内代码 */
+.markdown-body code:not(.hljs) {
+  background: var(--bg-secondary);
+  color: #e74c3c;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* 加粗/斜体 */
+.markdown-body strong { font-weight: 600; }
+.markdown-body em { font-style: italic; }
+
+/* 链接 */
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================
+   代码块容器 + 复制按钮
+   ============================================================ */
+
+.code-block-wrapper {
+  margin: 0.6em 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  background: #f6f8fa;
+}
+
+/* 代码块顶部栏（语言标签 + 复制按钮） */
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: #eef1f5;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+.code-lang {
+  color: var(--text-tertiary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  text-transform: lowercase;
+}
+.copy-btn {
+  padding: 2px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.copy-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.copy-btn.copied {
+  background: #10b981;
+  color: #fff;
+  border-color: #10b981;
+}
+
+/* highlight.js 生成的 pre/code 在包装器内部 */
+.code-block-wrapper pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: transparent !important;
+}
+.code-block-wrapper code.hljs {
+  padding: 0;
+  background: transparent !important;
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* 暗色主题适配（预留） */
+@media (prefers-color-scheme: dark) {
+  .code-block-wrapper {
+    background: #1e1e1e;
+  }
+  .code-block-header {
+    background: #2d2d2d;
+    border-bottom-color: #404040;
+  }
+  .copy-btn {
+    background: #3d3d3d;
+    color: #ccc;
+    border-color: #555;
+  }
+  .copy-btn:hover {
+    background: var(--accent);
+    color: #fff;
   }
 }
 </style>

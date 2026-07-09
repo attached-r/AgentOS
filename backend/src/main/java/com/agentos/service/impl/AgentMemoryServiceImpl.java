@@ -33,21 +33,38 @@ public class AgentMemoryServiceImpl implements AgentMemoryService {
         // V2 修复：原缺失此端点导致 Runtime EpisodicMemory 调用 404
         // Runtime 通过 httpx POST /api/agents/{agent_id}/memories 保存记忆
         agentMemoryMapper.insert(memory);
-        return agentMemoryMapper.selectById(memory.getId());
+        // IdType.AUTO 在特定 MyBatis-Plus + PostgreSQL 组合下，
+        // insert() 后 ID 可能未被回填到实体上，导致 selectById(null) 返回 null。
+        // 此处用"agent_id + 内容 + 创建时间降序"回查确保拿到完整记录。
+        if (memory.getId() != null) {
+            return agentMemoryMapper.selectById(memory.getId());
+        }
+        LambdaQueryWrapper<AgentMemory> wrapper = new LambdaQueryWrapper<AgentMemory>()
+                .eq(AgentMemory::getAgentId, memory.getAgentId())
+                .eq(AgentMemory::getUserId, memory.getUserId())
+                .eq(AgentMemory::getContent, memory.getContent())
+                .orderByDesc(AgentMemory::getCreatedAt)
+                .last("LIMIT 1");
+        return agentMemoryMapper.selectOne(wrapper);
     }
 
     // ────────────── 分页查询 ──────────────
 
     @Override
     public Page<AgentMemory> pageByAgent(Long agentId, int page, int size) {
-        Long userId = StpUtil.getLoginIdAsLong();
-        return agentMemoryMapper.selectPage(
-                new Page<>(page, size),
-                new LambdaQueryWrapper<AgentMemory>()
-                        .eq(AgentMemory::getAgentId, agentId)
-                        .eq(AgentMemory::getUserId, userId)
-                        .orderByDesc(AgentMemory::getCreatedAt)
-        );
+        Long userId = null;
+        try {
+            userId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            // Runtime 内部调用无登录态，不按用户过滤
+        }
+        LambdaQueryWrapper<AgentMemory> wrapper = new LambdaQueryWrapper<AgentMemory>()
+                .eq(AgentMemory::getAgentId, agentId);
+        if (userId != null) {
+            wrapper.eq(AgentMemory::getUserId, userId);
+        }
+        wrapper.orderByDesc(AgentMemory::getCreatedAt);
+        return agentMemoryMapper.selectPage(new Page<>(page, size), wrapper);
     }
 
     // ────────────── V2 修复：关键词搜索 → EpisodicMemory.search() 的检索入口 ──────────────
@@ -58,10 +75,17 @@ public class AgentMemoryServiceImpl implements AgentMemoryService {
         // V2 使用 PostgreSQL ILIKE 做关键词匹配，V3 预留升级为 Qdrant 向量检索
         //   - 替换：将 LambdaQueryWrapper 查询替换为 QdrantClient.search()
         //   - embedding 服务由 fastembed 提供
-        Long userId = StpUtil.getLoginIdAsLong();
+        Long userId = null;
+        try {
+            userId = StpUtil.getLoginIdAsLong();
+        } catch (Exception e) {
+            // Runtime 内部调用无登录态，不按用户过滤
+        }
         LambdaQueryWrapper<AgentMemory> wrapper = new LambdaQueryWrapper<AgentMemory>()
-                .eq(AgentMemory::getAgentId, agentId)
-                .eq(AgentMemory::getUserId, userId);
+                .eq(AgentMemory::getAgentId, agentId);
+        if (userId != null) {
+            wrapper.eq(AgentMemory::getUserId, userId);
+        }
         // V2：ILIKE 关键词匹配 content 字段
         // V3 升级：删除此 .like()，改为调用 Qdrant 语义搜索并返回相似结果 ID 列表
         if (query != null && !query.isEmpty()) {

@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 from agents.registry import agent_registry
 from agents.react_agent import ReActAgent
 from config import get_config
-from context.builder import ContextBuilder, ContextConfig
+from context.builder import ContextBuilder, ContextConfig, ContextPacket
 from core.llm import LLMClient
 from tools.registry import tool_registry
 
@@ -190,6 +190,35 @@ async def invoke_agent(agent_id: int, req: InvokeRequest):
         if name and name not in existing_tool_names:
             merged_tools.append(schema)
             existing_tool_names.add(name)
+
+    # ── 记忆操作指令注入 ────────────────────────────────────────────
+    # V2 修复：LLM 不会主动调用 memory.add 保存记忆，因为 system prompt
+    # 中没有任何相关指引。这里在 memory 工具可用时，向 context_packets
+    # 追加一条"记忆管理指引"，明确告知 LLM 何时应该保存/检索记忆。
+    #
+    # 指引内容：
+    #   - 保存触发条件（用户透露个人信息/偏好/关键事实）
+    #   - 检索触发时机（需要回忆之前内容）
+    #   - 工作记忆 vs 情景记忆的选择
+    if merged_tools and context_packets is not None:
+        _has_memory_tool = any(
+            s.get("function", {}).get("name") == "memory"
+            for s in merged_tools
+        )
+        if _has_memory_tool:
+            context_packets.append(ContextPacket(
+                content=(
+                    "【记忆管理指引】\n"
+                    f"你有 memory 工具可用于管理长期记忆（当前 agent_id={agent_id}），请主动使用：\n"
+                    "1. 用户透露个人信息、偏好、需求或重要事实 → 调用 memory.add 保存\n"
+                    "2. 需要回忆之前讨论过的内容 → 调用 memory.search 检索\n"
+                    "3. 跨会话需要记住的信息使用 memory_type=\"episodic\", importance>=0.7\n"
+                    "4. 调用 memory.add 和 memory.search 时请传入正确的 agent_id 参数"
+                ),
+                type="system",
+                relevance_score=1.0,
+                metadata={"priority": "high"},
+            ))
 
     # 工具调用步骤收集器 —— 供 ReActAgent 回传步骤
     tool_steps: List[Dict[str, Any]] = []

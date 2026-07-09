@@ -35,7 +35,7 @@ class RuntimeConfig:
     default_max_tokens: int = 4096
 
     # ── 后端 API（Runtime → Backend 回调，用于持久化记忆 / RAG）──
-    backend_base_url: str = "http://localhost:8080"
+    backend_base_url: str = "http://localhost:8099"
 
     # ── ReAct Agent ──────────────────────────────────────────
     react_max_steps: int = 10
@@ -71,7 +71,7 @@ class RuntimeConfig:
             default_model_name=os.getenv("DEFAULT_MODEL_NAME", "gpt-4o-mini"),
             default_temperature=float(os.getenv("DEFAULT_TEMPERATURE", "0.7")),
             default_max_tokens=int(os.getenv("DEFAULT_MAX_TOKENS", "4096")),
-            backend_base_url=os.getenv("BACKEND_BASE_URL", "http://localhost:8080"),
+            backend_base_url=os.getenv("BACKEND_BASE_URL", "http://localhost:8099"),
             react_max_steps=int(os.getenv("REACT_MAX_STEPS", "10")),
             redis_host=os.getenv("REDIS_HOST", "localhost"),
             redis_port=int(os.getenv("REDIS_PORT", "6379")),

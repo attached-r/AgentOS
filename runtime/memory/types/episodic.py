@@ -81,7 +81,10 @@ class EpisodicMemory(BaseMemory):
                 if resp.status_code == 200:
                     data = resp.json()
                     # 后端 R<T> 包装格式：{ code: 200, msg: "success", data: { id: 123, ... } }
-                    inner = data.get("data", data)
+                    # 防御：data 可能为 None（后端 save 返回 null），此时返回 0 而非抛异常
+                    inner = data.get("data") if isinstance(data, dict) else data
+                    if inner is None:
+                        return 0
                     return inner.get("id", 0)
 
                 return 0

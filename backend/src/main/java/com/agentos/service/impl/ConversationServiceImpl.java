@@ -218,8 +218,37 @@ public class ConversationServiceImpl implements ConversationService {
             );
             taskLogService.info(taskId, conversation.getAgentId(), "AI Runtime 调用成功");
         } catch (Exception e) {
-            taskLogService.error(taskId, conversation.getAgentId(), "调用失败: " + e.getMessage());
-            throw new BusinessException("调用 AI Runtime 失败: " + e.getMessage());
+            String msg = e.getMessage();
+            // 如果 Runtime 返回 Agent 不存在(404)，自动重试同步后再调用一次
+            if (msg != null && (msg.contains("404") || msg.contains("AGENT_NOT_FOUND"))) {
+                log.warn("Agent {} 在 Runtime 中不存在，尝试重新同步", conversation.getAgentId());
+                try {
+                    AgentRuntimeClient.SyncAgentRequest syncReq = new AgentRuntimeClient.SyncAgentRequest();
+                    if (agent != null) {
+                        syncReq.setId(agent.getId());
+                        syncReq.setName(agent.getName());
+                        syncReq.setDescription(agent.getDescription());
+                        syncReq.setSystemPrompt(agent.getSystemPrompt());
+                        syncReq.setModelProvider(agent.getModelProvider());
+                        syncReq.setModelName(agent.getModelName());
+                        syncReq.setTemperature(agent.getTemperature());
+                        syncReq.setMaxTokens(agent.getMaxTokens());
+                    }
+                    agentRuntimeClient.upsertAgent(syncReq);
+                    // 重试调用
+                    response = agentRuntimeClient.invoke(
+                            conversation.getAgentId(), conversationId, payloads,
+                            userApiKey, userBaseUrl, toolSchemas
+                    );
+                    taskLogService.info(taskId, conversation.getAgentId(), "AI Runtime 调用成功(重试)");
+                } catch (Exception retryEx) {
+                    taskLogService.error(taskId, conversation.getAgentId(), "重试仍失败: " + retryEx.getMessage());
+                    throw new BusinessException("调用 AI Runtime 失败: " + retryEx.getMessage());
+                }
+            } else {
+                taskLogService.error(taskId, conversation.getAgentId(), "调用失败: " + msg);
+                throw new BusinessException("调用 AI Runtime 失败: " + msg);
+            }
         }
 
         // 4. 保存 assistant 回复
